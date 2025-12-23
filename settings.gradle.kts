@@ -11,4 +11,4 @@ plugins {
 }
 
 rootProject.name = "cardio"
-include("lib")
+include("cardio-postgres")
