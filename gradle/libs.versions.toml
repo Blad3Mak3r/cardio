@@ -2,12 +2,15 @@
 # https://docs.gradle.org/current/userguide/platforms.html#sub::toml-dependencies-format
 
 [versions]
+coroutines = "1.10.2"
 junit-jupiter-engine = "5.12.1"
 kotlin = "2.3.0"
 r2dbc-pool = "1.0.2.RELEASE"
 r2dbc-postgres = "1.1.1.RELEASE"
 
 [libraries]
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactor", version.ref = "coroutines" }
 junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit-jupiter-engine" }
 r2dbc-pool = { module = "io.r2dbc:r2dbc-pool", version.ref = "r2dbc-pool" }
 r2dbc-postgres = { module = "org.postgresql:r2dbc-postgresql", version.ref = "r2dbc-postgres" }

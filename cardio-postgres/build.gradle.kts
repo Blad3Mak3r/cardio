@@ -27,7 +27,11 @@ dependencies {
 
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
+    api(libs.r2dbc.pool)
     api(libs.r2dbc.postgres)
+
+    implementation(libs.coroutines.core)
+    implementation(libs.coroutines.reactor)
 }
 
 // Apply a specific Java toolchain to ease working on different environments.
