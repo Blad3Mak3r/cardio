@@ -7,16 +7,17 @@ import io.r2dbc.postgresql.PostgresqlConnectionFactory
 import io.r2dbc.spi.Connection
 import kotlinx.coroutines.reactive.awaitSingle
 import kotlinx.coroutines.reactor.awaitSingle
-import kotlin.io.use
 
-class Cardio(internal val pool: ConnectionPool) {
+open class Cardio(internal val pool: ConnectionPool) {
 
     data class Configuration(
-        val r2dbcConfig: PostgresqlConnectionConfiguration.Builder.() -> Unit = {},
-        val poolConfig: ConnectionPoolConfiguration.Builder.() -> Unit = {}
+        var r2dbcConfig: PostgresqlConnectionConfiguration.Builder.() -> Unit = {},
+        var poolConfig: ConnectionPoolConfiguration.Builder.() -> Unit = {}
     )
 
     companion object {
+        suspend fun create(builder: Configuration.() -> Unit) = create(Configuration().apply(builder))
+
         suspend fun create(configuration: Configuration): Cardio {
             val r2dbcConfig = PostgresqlConnectionConfiguration.builder().apply(configuration.r2dbcConfig).build()
             val poolConfig = ConnectionPoolConfiguration.builder()
@@ -47,11 +48,12 @@ class Cardio(internal val pool: ConnectionPool) {
         }
     }
 
-    suspend fun <T> inTransaction(block: suspend (conn: Connection) -> T): T {
+    suspend fun <T> inTransaction(block: suspend (conn: CardioTransaction) -> T): T {
         return withConnection { conn ->
             conn.beginTransaction().awaitSingle()
+            val transaction = CardioTransaction(conn)
             try {
-                val result = block(conn)
+                val result = block(transaction)
                 conn.commitTransaction().awaitSingle()
                 result
             } catch (e: Exception) {

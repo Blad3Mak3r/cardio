@@ -3,12 +3,139 @@
  */
 package org.example
 
+import io.github.blad3mak3r.cardio.postgres.Cardio
+import io.github.blad3mak3r.cardio.postgres.CardioRepository
+import io.github.blad3mak3r.cardio.postgres.ClassMapper
+import io.github.blad3mak3r.cardio.postgres.getAs
+import io.r2dbc.spi.Row
+import io.r2dbc.spi.RowMetadata
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class LibraryTest {
-    @Test fun someLibraryMethodReturnsTrue() {
-        val classUnderTest = Library()
-        assertTrue(classUnderTest.someLibraryMethod(), "someLibraryMethod should return 'true'")
+
+    data class User(
+        val id: Long,
+        val name: String
+    ) {
+        companion object : ClassMapper<User> {
+            override fun transform(
+                row: Row,
+                metadata: RowMetadata
+            ): User {
+                return User(
+                    id = row.getAs("id"),
+                    name = row.getAs("name")
+                )
+            }
+
+            val users = listOf(
+                "Jhon",
+                "Doe",
+                "Loren",
+                "Inpsum",
+                "Dolor",
+            )
+        }
+    }
+
+    class TestRepository(db: Cardio) : CardioRepository<Cardio>(db) {
+
+        suspend fun seed(): Long {
+            val users = User.users.mapIndexed { i, v ->
+                i to v
+            }.toMap()
+
+            return execute(
+                stmt = """
+                INSERT INTO users
+                (id, name)
+                VALUES
+                ($1, $2)
+                RETURNING id, name
+            """.trimIndent(),
+                args = listOf(
+                    users.keys.toTypedArray(),
+                    users.values.toTypedArray()
+                )
+            )
+        }
+
+
+        suspend fun getUser(id: Long) = query(
+            stmt = "SELECT id, name FROM users WHERE user_id = $1",
+            args = listOf(
+                id
+            ),
+            transform = User::transform
+        ).firstOrNull()
+
+        suspend fun create(id: Long, name: String) = execute(
+            stmt = """
+                INSERT INTO users
+                (id, name)
+                VALUES
+                ($1, $2)
+            """.trimIndent(),
+            args = listOf(id, name)
+        )
+
+        suspend fun getAll() = query(
+            stmt = """
+                SELECT id, name FROM users
+            """.trimIndent(),
+            transform = User::transform
+        )
+
+        suspend fun delete(id: Long) = query(
+            stmt = """
+                DELETE FROM users WHERE id = $1
+                RETURNING id, name
+            """.trimIndent(),
+            args = listOf(id),
+            transform = User::transform
+        ).firstOrNull()
+    }
+
+    companion object {
+        val client = runBlocking {
+            Cardio.create {
+                poolConfig = {}
+                r2dbcConfig = {}
+            }
+        }
+
+        val repo = TestRepository(client)
+    }
+
+    @Test fun `01 - Seed database`() = runBlocking<Unit> {
+        val inserted = repo.seed()
+        assertTrue("Inserted rows are not equal") {
+            inserted == User.users.size.toLong()
+        }
+    }
+
+    @Test fun `02 - Select existing user`() = runBlocking<Unit> {
+        val user = repo.getUser(0)
+        assertNotNull(user, "User not found")
+    }
+
+    @Test fun `03 - Select unexisting user`() = runBlocking<Unit> {
+        val user = repo.getUser(100)
+        assertNull(user, "Unexisting user exists")
+    }
+
+    @Test fun `04 - List all users`() = runBlocking<Unit> {
+        val users = repo.getAll()
+        assertEquals(users.size, User.users.size)
+    }
+
+    @Test fun `05 - Delete user`() = runBlocking<Unit> {
+        val user = repo.delete(0)
+        assertNotNull(user)
     }
 }
