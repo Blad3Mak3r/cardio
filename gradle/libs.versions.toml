@@ -5,7 +5,7 @@
 coroutines = "1.10.2"
 junit-jupiter-engine = "5.12.1"
 kotlin = "2.3.0"
-mavenPublish = "0.34.0"
+mavenPublish = "0.35.0"
 r2dbc-pool = "1.0.2.RELEASE"
 r2dbc-postgres = "1.1.1.RELEASE"
 slf4j = "2.0.17"
