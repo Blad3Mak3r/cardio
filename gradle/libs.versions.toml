@@ -5,6 +5,7 @@
 coroutines = "1.10.2"
 junit-jupiter-engine = "5.12.1"
 kotlin = "2.3.0"
+mavenPublish = "0.34.0"
 r2dbc-pool = "1.0.2.RELEASE"
 r2dbc-postgres = "1.1.1.RELEASE"
 slf4j = "2.0.17"
@@ -16,5 +17,7 @@ junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine", vers
 r2dbc-pool = { module = "io.r2dbc:r2dbc-pool", version.ref = "r2dbc-pool" }
 r2dbc-postgres = { module = "org.postgresql:r2dbc-postgresql", version.ref = "r2dbc-postgres" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "mavenPublish" }
