@@ -5,8 +5,9 @@ import io.r2dbc.pool.ConnectionPoolConfiguration
 import io.r2dbc.postgresql.PostgresqlConnectionConfiguration
 import io.r2dbc.postgresql.PostgresqlConnectionFactory
 import io.r2dbc.spi.Connection
+import io.github.blad3mak3r.cardio.postgres.use
+import kotlinx.coroutines.reactive.awaitFirstOrNull
 import kotlinx.coroutines.reactive.awaitSingle
-import kotlinx.coroutines.reactor.awaitSingle
 
 open class Cardio(internal val pool: ConnectionPool) {
 
@@ -40,12 +41,7 @@ open class Cardio(internal val pool: ConnectionPool) {
     }
 
     suspend fun <T> withConnection(block: suspend (conn: Connection) -> T): T {
-        val conn = pool.create().awaitSingle()
-        try {
-            return block(conn)
-        } finally {
-            conn.close().awaitSingle()
-        }
+        return pool.create().awaitSingle().use(block)
     }
 
     suspend fun <T> inTransaction(block: suspend (conn: CardioTransaction) -> T): T {
@@ -54,10 +50,10 @@ open class Cardio(internal val pool: ConnectionPool) {
             val transaction = CardioTransaction(conn)
             try {
                 val result = block(transaction)
-                conn.commitTransaction().awaitSingle()
+                conn.commitTransaction().awaitFirstOrNull()
                 result
             } catch (e: Exception) {
-                conn.rollbackTransaction().awaitSingle()
+                conn.rollbackTransaction().awaitFirstOrNull()
                 throw e
             }
         }
