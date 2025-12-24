@@ -17,5 +17,5 @@ inline fun <reified T> Row.getAsNullable(name: String): T? {
 }
 
 inline fun <reified T> Row.getAs(name: String): T {
-    return getAsNullable(name) ?: error("")
+    return getAsNullable(name) ?: error("Column '$name' is null")
 }
