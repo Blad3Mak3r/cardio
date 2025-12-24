@@ -32,6 +32,8 @@ dependencies {
 
     implementation(libs.coroutines.core)
     implementation(libs.coroutines.reactor)
+
+    implementation(libs.slf4j.api)
 }
 
 // Apply a specific Java toolchain to ease working on different environments.

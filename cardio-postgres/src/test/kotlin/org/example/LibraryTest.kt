@@ -5,7 +5,6 @@ package org.example
 
 import io.github.blad3mak3r.cardio.postgres.Cardio
 import io.github.blad3mak3r.cardio.postgres.CardioRepository
-import io.github.blad3mak3r.cardio.postgres.ClassMapper
 import io.github.blad3mak3r.cardio.postgres.getAs
 import io.r2dbc.spi.Row
 import io.r2dbc.spi.RowMetadata
@@ -22,8 +21,8 @@ class LibraryTest {
         val id: Long,
         val name: String
     ) {
-        companion object : ClassMapper<User> {
-            override fun transform(
+        companion object {
+            fun transform(
                 row: Row,
                 metadata: RowMetadata
             ): User {
