@@ -1,11 +1,21 @@
 package io.github.blad3mak3r.cardio.postgres
 
+import io.r2dbc.spi.Connection
 import io.r2dbc.spi.Row
+import kotlinx.coroutines.reactive.awaitFirstOrNull
+
+suspend inline fun <T> Connection.use(block: suspend (Connection) -> T): T {
+    return try {
+        block(this)
+    } finally {
+        close().awaitFirstOrNull()
+    }
+}
 
 inline fun <reified T> Row.getAsNullable(name: String): T? {
-    return this.get(name) as T?
+    return this.get(name, T::class.java)
 }
 
 inline fun <reified T> Row.getAs(name: String): T {
-    return getAsNullable(name) ?: error("")
+    return getAsNullable(name) ?: error("Column '$name' is null")
 }

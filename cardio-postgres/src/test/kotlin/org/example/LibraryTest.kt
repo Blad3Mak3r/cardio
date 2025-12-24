@@ -5,7 +5,6 @@ package org.example
 
 import io.github.blad3mak3r.cardio.postgres.Cardio
 import io.github.blad3mak3r.cardio.postgres.CardioRepository
-import io.github.blad3mak3r.cardio.postgres.ClassMapper
 import io.github.blad3mak3r.cardio.postgres.getAs
 import io.r2dbc.spi.Row
 import io.r2dbc.spi.RowMetadata
@@ -22,8 +21,8 @@ class LibraryTest {
         val id: Long,
         val name: String
     ) {
-        companion object : ClassMapper<User> {
-            override fun transform(
+        companion object {
+            fun transform(
                 row: Row,
                 metadata: RowMetadata
             ): User {
@@ -52,12 +51,12 @@ class LibraryTest {
 
             return execute(
                 stmt = """
-                INSERT INTO users
-                (id, name)
-                VALUES
-                ($1, $2)
-                RETURNING id, name
-            """.trimIndent(),
+                    INSERT INTO users
+                    (id, name)
+                    VALUES
+                    ($1, $2)
+                    RETURNING id, name
+                """.trimIndent(),
                 args = listOf(
                     users.keys.toTypedArray(),
                     users.values.toTypedArray()
@@ -104,8 +103,17 @@ class LibraryTest {
     companion object {
         val client = runBlocking {
             Cardio.create {
-                poolConfig = {}
-                r2dbcConfig = {}
+                poolConfig = {
+                    initialSize(1)
+                    maxSize(1)
+                }
+                r2dbcConfig = {
+                    host("localhost")
+                    port(5432)
+                    database("testdb")
+                    username("testuser")
+                    password("testpassword")
+                }
             }
         }
 

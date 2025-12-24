@@ -5,8 +5,10 @@ import io.r2dbc.pool.ConnectionPoolConfiguration
 import io.r2dbc.postgresql.PostgresqlConnectionConfiguration
 import io.r2dbc.postgresql.PostgresqlConnectionFactory
 import io.r2dbc.spi.Connection
+import kotlinx.coroutines.reactive.awaitFirstOrNull
 import kotlinx.coroutines.reactive.awaitSingle
 import kotlinx.coroutines.reactor.awaitSingle
+import org.slf4j.LoggerFactory
 
 open class Cardio(internal val pool: ConnectionPool) {
 
@@ -26,26 +28,24 @@ open class Cardio(internal val pool: ConnectionPool) {
                 .build()
             val c = Cardio(ConnectionPool(poolConfig))
 
-            val v = c.withConnection { conn ->
-                conn.createStatement(
-                    """
-                    SELECT version() AS version
+            val version = c.inTransaction { tx ->
+                tx.query(
+                    stmt = """
+                        SELECT version()
                     """.trimIndent()
-                ).execute().awaitSingle().map {
-                    it.get("version") as String
-                }
+                ) { row, _ ->
+                    row.getAs<String>("version")
+                }.first()
             }
+            logger.info("Connected to Postgres version: $version")
             return c
         }
+
+        private val logger = LoggerFactory.getLogger(Cardio::class.java)
     }
 
     suspend fun <T> withConnection(block: suspend (conn: Connection) -> T): T {
-        val conn = pool.create().awaitSingle()
-        try {
-            return block(conn)
-        } finally {
-            conn.close().awaitSingle()
-        }
+        return pool.create().awaitSingle().use(block)
     }
 
     suspend fun <T> inTransaction(block: suspend (conn: CardioTransaction) -> T): T {
@@ -54,10 +54,11 @@ open class Cardio(internal val pool: ConnectionPool) {
             val transaction = CardioTransaction(conn)
             try {
                 val result = block(transaction)
-                conn.commitTransaction().awaitSingle()
+                conn.commitTransaction().awaitFirstOrNull()
                 result
             } catch (e: Exception) {
-                conn.rollbackTransaction().awaitSingle()
+                conn.rollbackTransaction().awaitFirstOrNull()
+                logger.error("Transaction rolled back due to error", e)
                 throw e
             }
         }
