@@ -51,12 +51,12 @@ class LibraryTest {
 
             return execute(
                 stmt = """
-                INSERT INTO users
-                (id, name)
-                VALUES
-                ($1, $2)
-                RETURNING id, name
-            """.trimIndent(),
+                    INSERT INTO users
+                    (id, name)
+                    VALUES
+                    ($1, $2)
+                    RETURNING id, name
+                """.trimIndent(),
                 args = listOf(
                     users.keys.toTypedArray(),
                     users.values.toTypedArray()
@@ -103,8 +103,17 @@ class LibraryTest {
     companion object {
         val client = runBlocking {
             Cardio.create {
-                poolConfig = {}
-                r2dbcConfig = {}
+                poolConfig = {
+                    initialSize(1)
+                    maxSize(1)
+                }
+                r2dbcConfig = {
+                    host("localhost")
+                    port(5432)
+                    database("testdb")
+                    username("testuser")
+                    password("testpassword")
+                }
             }
         }
 
