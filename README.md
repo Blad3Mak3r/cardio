@@ -56,6 +56,18 @@ class UserRepository(db: Cardio) : CardioRepository<Cardio>(db) {
     }
 }
 ```
+### Extending Cardio
+The `Cardio` class is `open`, allowing you to extend it to create a custom database context. This is useful for creating strongly-typed repositories that depend on your specific database class.
+
+```kotlin
+// Define your custom database class
+class MyDb(pool: ConnectionPool) : Cardio(pool)
+
+// Define a repository that requires MyDb
+class MyRepo(db: MyDb) : CardioRepository<MyDb>(db) {
+    // ...
+}
+```
 ## Useful Extensions
 The library includes extensions to facilitate retrieving data from rows (`Row`):
 - `row.getAs<T>("column_name")`: Gets the column value, throws error if null.
