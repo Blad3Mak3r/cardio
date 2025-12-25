@@ -6,7 +6,6 @@ import io.r2dbc.postgresql.PostgresqlConnectionConfiguration
 import io.r2dbc.postgresql.PostgresqlConnectionFactory
 import io.r2dbc.spi.Connection
 import kotlinx.coroutines.reactive.awaitFirstOrNull
-import kotlinx.coroutines.reactive.awaitSingle
 import kotlinx.coroutines.reactor.awaitSingle
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -56,7 +55,7 @@ open class Cardio (internal val pool: ConnectionPool) {
 
     suspend fun <T> inTransaction(block: suspend (conn: CardioTransaction) -> T): T {
         return withConnection { conn ->
-            conn.beginTransaction().awaitSingle()
+            conn.beginTransaction().awaitFirstOrNull()
             val transaction = CardioTransaction(conn)
             try {
                 val result = block(transaction)
