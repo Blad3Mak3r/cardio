@@ -10,7 +10,7 @@ Cardio is a lightweight Kotlin library designed to simplify interaction with Pos
 ### Configuration
 To get started, create an instance of `Cardio` by configuring the PostgreSQL connection and the pool:
 ```kotlin
-val cardio = Cardio.create {
+val cardio = Cardio.create<Cardio> {
     r2dbcConfig = {
         host("localhost")
         port(5432)
@@ -60,14 +60,36 @@ class UserRepository(db: Cardio) : CardioRepository<Cardio>(db) {
 The `Cardio` class is `open`, allowing you to extend it to create a custom database context. This is useful for creating strongly-typed repositories that depend on your specific database class.
 
 ```kotlin
+
 // Define your custom database class
 class MyDb(pool: ConnectionPool) : Cardio(pool)
 
+// Create an instance using the generic create method
+val myDb = Cardio.create<MyDb> {
+    r2dbcConfig = {
+        host("localhost")
+        port(5432)
+        database("my_database")
+        username("user")
+        password("password")
+    }
+    poolConfig = {
+        maxSize(10)
+    }
+}
+
 // Define a repository that requires MyDb
 class MyRepo(db: MyDb) : CardioRepository<MyDb>(db) {
-    // ...
+    suspend fun customOperation() {
+        // Your custom operations here
+    }
 }
+
+// Use the repository with your custom database
+val myRepo = MyRepo(myDb)
 ```
+
+The generic `create<T>` method uses reflection to instantiate your custom `Cardio` subclass, automatically handling the connection pool configuration and initialization.
 ## Useful Extensions
 The library includes extensions to facilitate retrieving data from rows (`Row`):
 - `row.getAs<T>("column_name")`: Gets the column value, throws error if null.
