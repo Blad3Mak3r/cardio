@@ -2,6 +2,7 @@ package io.github.blad3mak3r.cardio.postgres
 
 import io.r2dbc.spi.Row
 import io.r2dbc.spi.RowMetadata
+import kotlinx.coroutines.currentCoroutineContext
 
 open class CardioRepository<C : Cardio>(val db: C) {
 
@@ -14,16 +15,22 @@ open class CardioRepository<C : Cardio>(val db: C) {
         args: List<Any?> = emptyList(),
         transform: (Row, RowMetadata) -> T
     ): List<T> {
-        return db.withConnection { connection ->
-            val tx = CardioTransaction(connection)
-            tx.query(stmt, args, transform)
+        return when (val ctx = currentCoroutineContext()[CardioTransaction.Context]?.tx) {
+            null -> db.withConnection { connection ->
+                val tx = CardioTransaction(connection)
+                tx.query(stmt, args, transform)
+            }
+            else -> ctx.query(stmt, args, transform)
         }
     }
 
     protected suspend fun execute(stmt: String, args: List<Any?> = emptyList()): Long {
-        return db.withConnection { connection ->
-            val tx = CardioTransaction(connection)
-            tx.execute(stmt, args)
+        return when (val ctx = currentCoroutineContext()[CardioTransaction.Context]?.tx) {
+            null -> db.withConnection { connection ->
+                val tx = CardioTransaction(connection)
+                tx.execute(stmt, args)
+            }
+            else -> ctx.execute(stmt, args)
         }
     }
 

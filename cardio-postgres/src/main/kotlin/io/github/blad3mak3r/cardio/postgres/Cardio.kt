@@ -7,6 +7,7 @@ import io.r2dbc.postgresql.PostgresqlConnectionFactory
 import io.r2dbc.spi.Connection
 import kotlinx.coroutines.reactive.awaitFirstOrNull
 import kotlinx.coroutines.reactor.awaitSingle
+import kotlinx.coroutines.withContext
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
@@ -35,8 +36,8 @@ open class Cardio (internal val pool: ConnectionPool) {
                 .apply { isAccessible = true }
                 .newInstance(pool)
 
-            val version = c.inTransaction { tx ->
-                tx.query(
+            val version = c.inTransaction {
+                query(
                     stmt = """
                         SELECT version()
                     """.trimIndent()
@@ -53,12 +54,12 @@ open class Cardio (internal val pool: ConnectionPool) {
         return pool.create().awaitSingle().use(block)
     }
 
-    suspend fun <T> inTransaction(block: suspend (conn: CardioTransaction) -> T): T {
+    suspend fun <T> inTransaction(block: suspend CardioTransaction.() -> T): T {
         return withConnection { conn ->
             conn.beginTransaction().awaitFirstOrNull()
-            val transaction = CardioTransaction(conn)
+            val tx = CardioTransaction(conn)
             try {
-                val result = block(transaction)
+                val result = withContext(CardioTransaction.Context(tx)) { tx.block() }
                 conn.commitTransaction().awaitFirstOrNull()
                 result
             } catch (e: Exception) {

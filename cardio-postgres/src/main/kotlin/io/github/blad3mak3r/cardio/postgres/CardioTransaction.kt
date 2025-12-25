@@ -6,8 +6,17 @@ import io.r2dbc.spi.RowMetadata
 import kotlinx.coroutines.reactive.awaitSingle
 import kotlinx.coroutines.runBlocking
 import reactor.core.publisher.Flux
+import kotlin.coroutines.CoroutineContext
 
 class CardioTransaction(val c: Connection) : AutoCloseable {
+
+    data class Context(val tx: CardioTransaction) : CoroutineContext.Element {
+        companion object Key : CoroutineContext.Key<Context>
+
+        override val key: CoroutineContext.Key<*>
+            get() = Key
+    }
+
     override fun close() = runBlocking<Unit> {
         c.close().awaitSingle()
     }
