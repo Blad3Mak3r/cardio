@@ -8,9 +8,10 @@ import io.r2dbc.spi.Connection
 import kotlinx.coroutines.reactive.awaitFirstOrNull
 import kotlinx.coroutines.reactive.awaitSingle
 import kotlinx.coroutines.reactor.awaitSingle
+import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-open class Cardio(internal val pool: ConnectionPool) {
+open class Cardio (internal val pool: ConnectionPool) {
 
     data class Configuration(
         var r2dbcConfig: PostgresqlConnectionConfiguration.Builder.() -> Unit = {},
@@ -18,15 +19,22 @@ open class Cardio(internal val pool: ConnectionPool) {
     )
 
     companion object {
-        suspend fun create(builder: Configuration.() -> Unit) = create(Configuration().apply(builder))
+        val logger: Logger = LoggerFactory.getLogger(Cardio::class.java)
 
-        suspend fun create(configuration: Configuration): Cardio {
+        suspend inline fun <reified T : Cardio> create(builder: Configuration.() -> Unit): T =
+            create(Configuration().apply(builder))
+
+        suspend inline fun <reified T : Cardio> create(configuration: Configuration): T {
             val r2dbcConfig = PostgresqlConnectionConfiguration.builder().apply(configuration.r2dbcConfig).build()
             val poolConfig = ConnectionPoolConfiguration.builder()
                 .connectionFactory(PostgresqlConnectionFactory(r2dbcConfig))
                 .apply(configuration.poolConfig)
                 .build()
-            val c = Cardio(ConnectionPool(poolConfig))
+            val pool = ConnectionPool(poolConfig)
+
+            val c = T::class.java.getDeclaredConstructor(ConnectionPool::class.java)
+                .apply { isAccessible = true }
+                .newInstance(pool)
 
             val version = c.inTransaction { tx ->
                 tx.query(
@@ -40,8 +48,6 @@ open class Cardio(internal val pool: ConnectionPool) {
             logger.info("Connected to Postgres version: $version")
             return c
         }
-
-        private val logger = LoggerFactory.getLogger(Cardio::class.java)
     }
 
     suspend fun <T> withConnection(block: suspend (conn: Connection) -> T): T {

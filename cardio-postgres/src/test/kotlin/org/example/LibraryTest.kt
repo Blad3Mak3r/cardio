@@ -6,6 +6,7 @@ package org.example
 import io.github.blad3mak3r.cardio.postgres.Cardio
 import io.github.blad3mak3r.cardio.postgres.CardioRepository
 import io.github.blad3mak3r.cardio.postgres.getAs
+import io.r2dbc.pool.ConnectionPool
 import io.r2dbc.spi.Row
 import io.r2dbc.spi.RowMetadata
 import kotlinx.coroutines.runBlocking
@@ -16,6 +17,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class LibraryTest {
+
+    class MyCardio(pool: ConnectionPool) : Cardio(pool)
 
     data class User(
         val id: Long,
@@ -102,7 +105,7 @@ class LibraryTest {
 
     companion object {
         val client = runBlocking {
-            Cardio.create {
+            Cardio.create<MyCardio> {
                 poolConfig = {
                     initialSize(1)
                     maxSize(1)
