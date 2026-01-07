@@ -13,14 +13,15 @@ open class CardioRepository<C : Cardio>(val db: C) {
     protected suspend fun <T> query(
         stmt: String,
         args: List<Any?> = emptyList(),
+        fetchSize: Int? = null,
         transform: (Row, RowMetadata) -> T
     ): List<T> {
         return when (val ctx = currentCoroutineContext()[CardioTransaction.Context]?.tx) {
             null -> db.withConnection { connection ->
                 val tx = CardioTransaction(connection)
-                tx.query(stmt, args, transform)
+                tx.query(stmt, args, fetchSize, transform)
             }
-            else -> ctx.query(stmt, args, transform)
+            else -> ctx.query(stmt, args, fetchSize, transform)
         }
     }
 

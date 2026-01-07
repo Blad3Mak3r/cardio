@@ -28,7 +28,7 @@ class CardioTransaction(val c: Connection) : AutoCloseable {
         transform: (Row, RowMetadata) -> T
     ): List<T> {
         val statement = c.createStatement(stmt).apply {
-            this.fetchSize(fetchSize)
+            fetchSize?.let { this.fetchSize(it) }
         }
 
         args.forEachIndexed { i, v ->
