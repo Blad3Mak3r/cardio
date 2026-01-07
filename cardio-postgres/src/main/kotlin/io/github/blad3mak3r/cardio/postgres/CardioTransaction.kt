@@ -24,9 +24,12 @@ class CardioTransaction(val c: Connection) : AutoCloseable {
     suspend fun <T> query(
         stmt: String,
         args: List<Any?> = emptyList(),
+        fetchSize: Int? = null,
         transform: (Row, RowMetadata) -> T
     ): List<T> {
-        val statement = c.createStatement(stmt)
+        val statement = c.createStatement(stmt).apply {
+            this.fetchSize(fetchSize)
+        }
 
         args.forEachIndexed { i, v ->
             when(v) {
