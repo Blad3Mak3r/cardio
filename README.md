@@ -132,33 +132,100 @@ try {
 
 ## Sentry Integration
 
-For production applications, you can add the `cardio-sentry` module for automatic error tracking with Sentry:
+The `cardio-sentry` module provides automatic error tracking and enrichment for production applications. If you're already using `cardio-postgres`, adding Sentry integration is straightforward.
+
+### Why use cardio-sentry?
+
+- **Automatic Error Enrichment**: All Cardio exceptions are automatically enriched with SQL queries, parameters, and context
+- **Zero Configuration**: Works with your existing Sentry setup - no additional initialization needed
+- **Production Ready**: Built on Sentry SDK 8.29.0 with proper error handling
+- **Non-Intrusive**: Doesn't interfere with your existing error handling or Sentry configuration
+
+### Installation
+
+If you're already using `cardio-postgres`, simply add the `cardio-sentry` dependency:
 
 ```kotlin
 dependencies {
     implementation("io.github.blad3mak3r.cardio:cardio-postgres:VERSION")
-    implementation("io.github.blad3mak3r.cardio:cardio-sentry:VERSION")
+    implementation("io.github.blad3mak3r.cardio:cardio-sentry:VERSION")  // Add this line
 }
 ```
 
-Then initialize Sentry with Cardio's automatic enrichment:
+### Setup for Existing Projects
+
+If you already have Sentry configured in your application, you only need to register Cardio's enrichment callback:
 
 ```kotlin
 import io.sentry.Sentry
 import io.github.blad3mak3r.cardio.sentry.CardioSentryBeforeSend
 
+// Your existing Sentry initialization
 Sentry.init { options ->
     options.dsn = "https://your-sentry-dsn@sentry.io/project-id"
     options.environment = "production"
+    options.release = "1.0.0"
+    // ... your other Sentry configuration
     
-    // Enable automatic Cardio exception enrichment
+    // Add this line to enable automatic Cardio exception enrichment
     options.beforeSend = CardioSentryBeforeSend()
 }
 ```
 
-All Cardio exceptions will be automatically enriched with query details, parameters, and context. No manual exception capture needed!
+### Setup for New Projects
 
-See [cardio-sentry/README.md](cardio-sentry/README.md) for detailed usage instructions.
+If you don't have Sentry yet, here's a complete setup example:
+
+```kotlin
+import io.sentry.Sentry
+import io.github.blad3mak3r.cardio.sentry.CardioSentryBeforeSend
+
+fun main() {
+    // Initialize Sentry with Cardio integration
+    Sentry.init { options ->
+        options.dsn = "https://your-sentry-dsn@sentry.io/project-id"
+        options.environment = "production"
+        options.release = "1.0.0"
+        options.tracesSampleRate = 1.0
+        
+        // Enable automatic Cardio exception enrichment
+        options.beforeSend = CardioSentryBeforeSend()
+    }
+    
+    // Your application code
+}
+```
+
+### What Gets Tracked
+
+Once configured, all Cardio exceptions will be automatically sent to Sentry with enriched information:
+
+- **CardioQueryException**: SQL query + parameters + error details
+- **CardioExecutionException**: Statement + parameters + affected rows
+- **CardioTransactionException**: Transaction state + rollback information
+- **CardioNullColumnException**: Column name + available columns
+- **CardioColumnNotFoundException**: Requested column + available columns
+
+**No manual exception capture needed!** The library handles everything automatically.
+
+### Example
+
+```kotlin
+class UserRepository(db: Cardio) : CardioRepository<Cardio>(db) {
+    suspend fun findById(id: Int): User? {
+        // If an error occurs here, it will be automatically sent to Sentry
+        // with the full query, parameters, and context
+        return query("SELECT * FROM users WHERE id = $1", listOf(id)) { row, _ ->
+            User(
+                id = row.getAs<Int>("id"),
+                name = row.getAs<String>("name")
+            )
+        }.firstOrNull()
+    }
+}
+```
+
+For more details and advanced usage (like coroutine integration), see [cardio-sentry/README.md](cardio-sentry/README.md).
 
 ## Useful Extensions
 The library includes extensions to facilitate retrieving data from rows (`Row`):
