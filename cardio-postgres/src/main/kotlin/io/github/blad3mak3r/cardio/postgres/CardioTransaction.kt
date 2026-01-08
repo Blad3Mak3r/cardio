@@ -24,46 +24,55 @@ class CardioTransaction(val c: Connection) : AutoCloseable {
     suspend fun <T> query(
         stmt: String,
         args: List<Any?> = emptyList(),
-        fetchSize: Int? = null,
         transform: (Row, RowMetadata) -> T
     ): List<T> {
-        val statement = c.createStatement(stmt).apply {
-            fetchSize?.let { this.fetchSize(it) }
-        }
+        return try {
+            val statement = c.createStatement(stmt)
 
-        args.forEachIndexed { i, v ->
-            when(v) {
-                null -> statement.bindNull(i, Any::class.java)
-                else -> statement.bind(i, v)
-            }
-        }
-
-        return Flux.from(statement.execute())
-            .flatMap { r ->
-                r.map { r, m ->
-                    transform(r, m)
+            args.forEachIndexed { i, v ->
+                when(v) {
+                    null -> statement.bindNull(i, Any::class.java)
+                    else -> statement.bind(i, v)
                 }
             }
-            .collectList()
-            .awaitSingle()
+
+            Flux.from(statement.execute())
+                .flatMap { r ->
+                    r.map { r, m ->
+                        transform(r, m)
+                    }
+                }
+                .collectList()
+                .awaitSingle()
+        } catch (e: Exception) {
+            // Don't wrap CardioExceptions
+            if (e is CardioException) {
+                throw e
+            }
+            throw CardioQueryException(stmt, args, e)
+        }
     }
 
     suspend fun execute(
         stmt: String,
         args: List<Any?> = emptyList()
     ): Long {
-        val statement = c.createStatement(stmt)
+        return try {
+            val statement = c.createStatement(stmt)
 
-        args.forEachIndexed { i, v ->
-            when(v) {
-                null -> statement.bindNull(i, Any::class.java)
-                else -> statement.bind(i, v)
+            args.forEachIndexed { i, v ->
+                when(v) {
+                    null -> statement.bindNull(i, Any::class.java)
+                    else -> statement.bind(i, v)
+                }
             }
-        }
 
-        return Flux.from(statement.execute())
-            .flatMap { result -> result.rowsUpdated }
-            .reduce(0L) { acc, value -> acc + value }
-            .awaitSingle()
+            Flux.from(statement.execute())
+                .flatMap { result -> result.rowsUpdated }
+                .reduce(0L) { acc, value -> acc + value }
+                .awaitSingle()
+        } catch (e: Exception) {
+            throw CardioExecutionException(stmt, args, e)
+        }
     }
 }

@@ -56,16 +56,28 @@ open class Cardio (internal val pool: ConnectionPool) {
 
     suspend fun <T> inTransaction(block: suspend CardioTransaction.() -> T): T {
         return withConnection { conn ->
-            conn.beginTransaction().awaitFirstOrNull()
-            val tx = CardioTransaction(conn)
             try {
+                conn.beginTransaction().awaitFirstOrNull()
+                val tx = CardioTransaction(conn)
                 val result = withContext(CardioTransaction.Context(tx)) { tx.block() }
                 conn.commitTransaction().awaitFirstOrNull()
                 result
             } catch (e: Exception) {
-                conn.rollbackTransaction().awaitFirstOrNull()
-                logger.error("Transaction rolled back due to error", e)
-                throw e
+                try {
+                    conn.rollbackTransaction().awaitFirstOrNull()
+                    logger.error("Transaction rolled back due to error", e)
+                } catch (rollbackError: Exception) {
+                    logger.error("Failed to rollback transaction", rollbackError)
+                    throw CardioTransactionException(
+                        "Transaction failed and rollback also failed: ${e.message}. Rollback error: ${rollbackError.message}",
+                        e
+                    )
+                }
+                // Re-throw the original exception if it's already a CardioException
+                if (e is CardioException) {
+                    throw e
+                }
+                throw CardioTransactionException("Transaction failed: ${e.message}", e)
             }
         }
     }
