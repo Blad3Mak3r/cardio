@@ -8,6 +8,7 @@ kotlin = "2.3.0"
 mavenPublish = "0.35.0"
 r2dbc-pool = "1.0.2.RELEASE"
 r2dbc-postgres = "1.1.1.RELEASE"
+sentry = "8.0.0"
 slf4j = "2.0.17"
 
 [libraries]
@@ -16,6 +17,7 @@ coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reacto
 junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit-jupiter-engine" }
 r2dbc-pool = { module = "io.r2dbc:r2dbc-pool", version.ref = "r2dbc-pool" }
 r2dbc-postgres = { module = "org.postgresql:r2dbc-postgresql", version.ref = "r2dbc-postgres" }
+sentry-kotlin = { module = "io.sentry:sentry-kotlin-extensions", version.ref = "sentry" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 
 [plugins]

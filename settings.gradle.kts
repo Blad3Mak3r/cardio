@@ -12,3 +12,4 @@ plugins {
 
 rootProject.name = "cardio"
 include("cardio-postgres")
+include("cardio-sentry")
