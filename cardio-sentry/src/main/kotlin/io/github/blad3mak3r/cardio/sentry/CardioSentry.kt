@@ -106,10 +106,8 @@ object CardioSentry {
     /**
      * Close the Sentry client and flush any pending events.
      * Should be called when shutting down the application.
-     * 
-     * @param timeoutMillis Maximum time to wait for events to be sent (default: 2000ms)
      */
-    fun close(timeoutMillis: Long = 2000L) {
+    fun close() {
         try {
             Sentry.close()
             logger.info("Cardio Sentry closed successfully")
