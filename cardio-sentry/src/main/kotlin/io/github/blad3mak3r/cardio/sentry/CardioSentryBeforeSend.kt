@@ -3,6 +3,7 @@ package io.github.blad3mak3r.cardio.sentry
 import io.sentry.Hint
 import io.sentry.SentryEvent
 import io.sentry.SentryOptions
+import org.slf4j.LoggerFactory
 
 /**
  * Sentry BeforeSend callback that automatically enriches Cardio exceptions with structured data.
@@ -35,11 +36,15 @@ import io.sentry.SentryOptions
  */
 class CardioSentryBeforeSend : SentryOptions.BeforeSendCallback {
     
+    private val logger = LoggerFactory.getLogger(CardioSentryBeforeSend::class.java)
+    
     override fun execute(event: SentryEvent, hint: Hint): SentryEvent? {
         val exception = event.throwable ?: return event
         
-        // Check if this is a Cardio exception
-        if (!isCardioException(exception)) {
+        // Check if this is a Cardio exception by checking the class name
+        // We use class name checking instead of instanceof to avoid cardio-sentry depending on cardio-postgres
+        val className = exception::class.qualifiedName ?: return event
+        if (!className.startsWith("io.github.blad3mak3r.cardio.postgres.Cardio")) {
             return event
         }
         
@@ -47,45 +52,33 @@ class CardioSentryBeforeSend : SentryOptions.BeforeSendCallback {
         event.setTag("library", "cardio")
         event.setTag("library.version", getCardioVersion())
         
-        // Enrich based on exception type
-        when {
-            exception::class.qualifiedName?.contains("CardioQueryException") == true -> {
-                enrichQueryException(event, exception)
+        // Enrich based on exception type using reflection-free approach
+        try {
+            when {
+                className.endsWith("CardioQueryException") -> enrichQueryException(event, exception)
+                className.endsWith("CardioExecutionException") -> enrichExecutionException(event, exception)
+                className.endsWith("CardioTransactionException") -> enrichTransactionException(event, exception)
+                className.endsWith("CardioNullColumnException") -> enrichNullColumnException(event, exception)
+                className.endsWith("CardioColumnNotFoundException") -> enrichColumnNotFoundException(event, exception)
             }
-            exception::class.qualifiedName?.contains("CardioExecutionException") == true -> {
-                enrichExecutionException(event, exception)
-            }
-            exception::class.qualifiedName?.contains("CardioTransactionException") == true -> {
-                enrichTransactionException(event, exception)
-            }
-            exception::class.qualifiedName?.contains("CardioNullColumnException") == true -> {
-                enrichNullColumnException(event, exception)
-            }
-            exception::class.qualifiedName?.contains("CardioColumnNotFoundException") == true -> {
-                enrichColumnNotFoundException(event, exception)
-            }
+        } catch (e: Exception) {
+            // Log but don't fail the event sending if enrichment fails
+            logger.debug("Failed to enrich Cardio exception: ${e.message}", e)
         }
         
         return event
     }
     
-    private fun isCardioException(exception: Throwable): Boolean {
-        val className = exception::class.qualifiedName ?: return false
-        return className.startsWith("io.github.blad3mak3r.cardio.postgres.Cardio")
-    }
-    
     private fun enrichQueryException(event: SentryEvent, exception: Throwable) {
         event.setTag("cardio.exception_type", "query")
         
-        // Try to extract query and params using reflection
+        // Access public properties using reflection
         try {
-            val queryField = exception::class.java.getDeclaredField("query")
-            queryField.isAccessible = true
-            val query = queryField.get(exception) as? String
+            val queryMethod = exception::class.java.getMethod("getQuery")
+            val query = queryMethod.invoke(exception) as? String
             
-            val paramsField = exception::class.java.getDeclaredField("params")
-            paramsField.isAccessible = true
-            val params = paramsField.get(exception) as? List<*>
+            val paramsMethod = exception::class.java.getMethod("getParams")
+            val params = paramsMethod.invoke(exception) as? List<*>
             
             if (query != null) {
                 event.setExtra("cardio.query", query)
@@ -97,22 +90,20 @@ class CardioSentryBeforeSend : SentryOptions.BeforeSendCallback {
                 event.setExtra("cardio.params_count", params.size)
             }
         } catch (e: Exception) {
-            // Reflection failed, ignore
+            logger.debug("Failed to extract query information: ${e.message}")
         }
     }
     
     private fun enrichExecutionException(event: SentryEvent, exception: Throwable) {
         event.setTag("cardio.exception_type", "execution")
         
-        // Try to extract statement and params using reflection
+        // Access public properties using reflection
         try {
-            val statementField = exception::class.java.getDeclaredField("statement")
-            statementField.isAccessible = true
-            val statement = statementField.get(exception) as? String
+            val statementMethod = exception::class.java.getMethod("getStatement")
+            val statement = statementMethod.invoke(exception) as? String
             
-            val paramsField = exception::class.java.getDeclaredField("params")
-            paramsField.isAccessible = true
-            val params = paramsField.get(exception) as? List<*>
+            val paramsMethod = exception::class.java.getMethod("getParams")
+            val params = paramsMethod.invoke(exception) as? List<*>
             
             if (statement != null) {
                 event.setExtra("cardio.statement", statement)
@@ -124,7 +115,7 @@ class CardioSentryBeforeSend : SentryOptions.BeforeSendCallback {
                 event.setExtra("cardio.params_count", params.size)
             }
         } catch (e: Exception) {
-            // Reflection failed, ignore
+            logger.debug("Failed to extract execution information: ${e.message}")
         }
     }
     
@@ -135,15 +126,13 @@ class CardioSentryBeforeSend : SentryOptions.BeforeSendCallback {
     private fun enrichNullColumnException(event: SentryEvent, exception: Throwable) {
         event.setTag("cardio.exception_type", "null_column")
         
-        // Try to extract column name and available columns using reflection
+        // Access public properties using reflection
         try {
-            val columnNameField = exception::class.java.getDeclaredField("columnName")
-            columnNameField.isAccessible = true
-            val columnName = columnNameField.get(exception) as? String
+            val columnNameMethod = exception::class.java.getMethod("getColumnName")
+            val columnName = columnNameMethod.invoke(exception) as? String
             
-            val availableColumnsField = exception::class.java.getDeclaredField("availableColumns")
-            availableColumnsField.isAccessible = true
-            val availableColumns = availableColumnsField.get(exception) as? List<*>
+            val availableColumnsMethod = exception::class.java.getMethod("getAvailableColumns")
+            val availableColumns = availableColumnsMethod.invoke(exception) as? List<*>
             
             if (columnName != null) {
                 event.setExtra("cardio.column_name", columnName)
@@ -154,22 +143,20 @@ class CardioSentryBeforeSend : SentryOptions.BeforeSendCallback {
                 event.setExtra("cardio.available_columns", availableColumns)
             }
         } catch (e: Exception) {
-            // Reflection failed, ignore
+            logger.debug("Failed to extract null column information: ${e.message}")
         }
     }
     
     private fun enrichColumnNotFoundException(event: SentryEvent, exception: Throwable) {
         event.setTag("cardio.exception_type", "column_not_found")
         
-        // Try to extract column name and available columns using reflection
+        // Access public properties using reflection
         try {
-            val columnNameField = exception::class.java.getDeclaredField("columnName")
-            columnNameField.isAccessible = true
-            val columnName = columnNameField.get(exception) as? String
+            val columnNameMethod = exception::class.java.getMethod("getColumnName")
+            val columnName = columnNameMethod.invoke(exception) as? String
             
-            val availableColumnsField = exception::class.java.getDeclaredField("availableColumns")
-            availableColumnsField.isAccessible = true
-            val availableColumns = availableColumnsField.get(exception) as? List<*>
+            val availableColumnsMethod = exception::class.java.getMethod("getAvailableColumns")
+            val availableColumns = availableColumnsMethod.invoke(exception) as? List<*>
             
             if (columnName != null) {
                 event.setExtra("cardio.column_name", columnName)
@@ -180,15 +167,17 @@ class CardioSentryBeforeSend : SentryOptions.BeforeSendCallback {
                 event.setExtra("cardio.available_columns", availableColumns)
             }
         } catch (e: Exception) {
-            // Reflection failed, ignore
+            logger.debug("Failed to extract column not found information: ${e.message}")
         }
     }
     
     private fun getCardioVersion(): String {
         return try {
-            // Try to read version from package or manifest
-            this::class.java.`package`?.implementationVersion ?: "unknown"
+            // Try to read version from package
+            val pkg = this.javaClass.`package`
+            pkg?.implementationVersion ?: "unknown"
         } catch (e: Exception) {
+            logger.debug("Failed to get Cardio version: ${e.message}")
             "unknown"
         }
     }
