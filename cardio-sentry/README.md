@@ -1,13 +1,13 @@
 # Cardio Sentry
 
-Cardio Sentry is a module for the Cardio library that provides Sentry integration for detailed and structured error reporting.
+Cardio Sentry is a module for the Cardio library that provides automatic Sentry integration for detailed and structured error reporting.
 
 ## Features
 
-- **Easy Initialization:** Simple API to initialize Sentry with custom configuration
-- **Structured Error Reporting:** Capture exceptions with additional context, tags, and extras
-- **Coroutine Support:** Coroutine-aware exception handler for automatic error reporting
-- **Flexible Configuration:** Full access to Sentry's configuration options
+- **Automatic Error Enrichment:** Automatically structures Cardio exceptions with query details, parameters, and context
+- **Zero Configuration:** Works with your existing Sentry setup - no additional initialization needed
+- **Coroutine Support:** Optional coroutine exception handler for automatic error reporting
+- **Non-Intrusive:** Uses your application's Sentry configuration - cardio-sentry doesn't initialize Sentry
 
 ## Installation
 
@@ -21,57 +21,64 @@ dependencies {
 
 ## Usage
 
-### Initialize Sentry
+### Initialize Sentry in Your Application
 
-Initialize Sentry at the start of your application:
-
-```kotlin
-CardioSentry.init {
-    dsn = "https://your-sentry-dsn@sentry.io/project-id"
-    environment = "production"
-    release = "1.0.0"
-    tracesSampleRate = 1.0
-}
-```
-
-### Capture Exceptions
-
-Capture exceptions with additional context:
+First, initialize Sentry in your application as you normally would, and register the Cardio BeforeSend callback:
 
 ```kotlin
-try {
-    // Your code that might throw an exception
-    performDatabaseOperation()
-} catch (e: Exception) {
-    CardioSentry.captureException(e) {
-        tag("component", "database")
-        tag("operation", "query")
-        context("query", mapOf(
-            "sql" to "SELECT * FROM users",
-            "params" to listOf(1, 2, 3)
-        ))
-        extra("user_id", userId)
+import io.sentry.Sentry
+import io.github.blad3mak3r.cardio.sentry.CardioSentryBeforeSend
+
+fun main() {
+    // Initialize Sentry with your configuration
+    Sentry.init { options ->
+        options.dsn = "https://your-sentry-dsn@sentry.io/project-id"
+        options.environment = "production"
+        options.release = "1.0.0"
+        options.tracesSampleRate = 1.0
+        
+        // Register Cardio's BeforeSend callback for automatic enrichment
+        options.beforeSend = CardioSentryBeforeSend()
     }
-    throw e
+    
+    // Your application code
 }
 ```
 
-### Capture Messages
+### Automatic Exception Enrichment
 
-Capture informational messages:
+Once configured, all Cardio exceptions will be automatically enriched with structured data:
 
 ```kotlin
-CardioSentry.captureMessage("User login successful", SentryLevel.INFO) {
-    tag("event", "authentication")
-    extra("user_id", userId)
+class UserRepository(db: Cardio) : CardioRepository<Cardio>(db) {
+    suspend fun findById(id: Int): User? {
+        // Exceptions are automatically captured and enriched with:
+        // - Query/statement SQL
+        // - Parameters
+        // - Column information (for column errors)
+        // - Transaction context
+        return query("SELECT * FROM users WHERE id = $1", listOf(id)) { row, _ ->
+            User(
+                id = row.getAs<Int>("id"),
+                name = row.getAs<String>("name")
+            )
+        }.firstOrNull()
+    }
 }
 ```
 
-### Coroutine Integration
+When an exception occurs, Sentry will receive:
+- **Tags**: `library=cardio`, `cardio.exception_type=query`, `cardio.query_hash=...`
+- **Extras**: Full SQL query, parameters, column names (when applicable)
+- **Fingerprints**: Automatic grouping by query structure
 
-Use the coroutine exception handler for automatic error reporting:
+### Coroutine Integration (Optional)
+
+For automatic capture of uncaught coroutine exceptions:
 
 ```kotlin
+import io.github.blad3mak3r.cardio.sentry.CardioSentryExceptionHandler
+
 val scope = CoroutineScope(
     SupervisorJob() + 
     Dispatchers.Default + 
@@ -81,69 +88,61 @@ val scope = CoroutineScope(
 )
 
 scope.launch {
-    // Exceptions thrown here will be automatically captured by Sentry
-    performAsyncOperation()
+    // Uncaught exceptions will be automatically reported to Sentry
+    performDatabaseOperation()
 }
 ```
 
-### Extension Functions
+### Combining with Your Own BeforeSend
 
-Use extension functions for convenient error reporting in suspend functions:
+If you have your own BeforeSend logic, you can chain them:
 
 ```kotlin
-suspend fun performOperation() {
-    try {
-        // Your code
-    } catch (e: Exception) {
-        e.captureToSentry {
-            tag("operation", "data-processing")
-            extra("batch_size", 100)
-        }
-        throw e
-    }
-}
-
-suspend fun logEvent() {
-    captureSentryMessage("Processing completed") {
-        tag("component", "processor")
-        extra("items_processed", 1000)
+Sentry.init { options ->
+    options.dsn = "https://your-sentry-dsn@sentry.io/project-id"
+    
+    val cardioBeforeSend = CardioSentryBeforeSend()
+    options.beforeSend = SentryOptions.BeforeSendCallback { event, hint ->
+        // Your custom processing
+        val processed = myCustomProcessing(event)
+        
+        // Then let Cardio enrich Cardio-specific exceptions
+        cardioBeforeSend.execute(processed, hint)
     }
 }
 ```
 
-### Cleanup
+## What Gets Enriched
 
-Close Sentry when shutting down your application:
+### CardioQueryException
+- Tags: `cardio.exception_type=query`, `cardio.query_hash`
+- Extras: `cardio.query`, `cardio.params`, `cardio.params_count`
 
-```kotlin
-CardioSentry.close()
-```
+### CardioExecutionException
+- Tags: `cardio.exception_type=execution`, `cardio.statement_hash`
+- Extras: `cardio.statement`, `cardio.params`, `cardio.params_count`
 
-## Integration with Cardio Postgres
+### CardioNullColumnException
+- Tags: `cardio.exception_type=null_column`, `cardio.column_name`
+- Extras: `cardio.column_name`, `cardio.available_columns`
 
-While `cardio-sentry` is a separate module and `cardio-postgres` does not depend on it, you can easily integrate them:
+### CardioColumnNotFoundException
+- Tags: `cardio.exception_type=column_not_found`, `cardio.column_name`
+- Extras: `cardio.column_name`, `cardio.available_columns`
 
-```kotlin
-class UserRepository(db: MyDb) : CardioRepository<MyDb>(db) {
-    suspend fun findUser(id: Int): User? {
-        return try {
-            query("SELECT * FROM users WHERE id = $1", listOf(id)) { row, _ ->
-                User(
-                    id = row.getAs<Int>("id"),
-                    name = row.getAs<String>("name")
-                )
-            }.firstOrNull()
-        } catch (e: Exception) {
-            CardioSentry.captureException(e) {
-                tag("repository", "user")
-                tag("operation", "findUser")
-                extra("user_id", id)
-            }
-            throw e
-        }
-    }
-}
-```
+### CardioTransactionException
+- Tags: `cardio.exception_type=transaction`
+
+## Why This Design?
+
+This design follows the principle that **users already have Sentry configured** in their applications. Cardio Sentry doesn't try to initialize or configure Sentry - it just provides structured data for Cardio-specific exceptions using your existing Sentry setup.
+
+Benefits:
+- No duplicate Sentry initialization
+- Works with your existing Sentry configuration (DSN, environment, release, etc.)
+- No manual exception capture needed
+- Automatic enrichment without code changes
+- Can be combined with your existing Sentry customizations
 
 ## License
 

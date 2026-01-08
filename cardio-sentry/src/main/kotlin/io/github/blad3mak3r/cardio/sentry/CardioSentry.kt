@@ -3,59 +3,37 @@ package io.github.blad3mak3r.cardio.sentry
 import io.sentry.Sentry
 import io.sentry.SentryEvent
 import io.sentry.SentryLevel
-import io.sentry.SentryOptions
 import io.sentry.protocol.Message
 import org.slf4j.LoggerFactory
 
 /**
- * Cardio Sentry integration for detailed error reporting.
+ * Cardio Sentry integration for automatic structured error reporting.
  * 
- * This class provides a simple way to initialize Sentry and capture errors
- * with structured information.
+ * This module automatically captures and structures Cardio exceptions to send to Sentry.
+ * It assumes Sentry is already initialized in your application.
  * 
- * Example usage:
+ * No manual configuration is needed - just add the dependency and Cardio exceptions
+ * will be automatically enriched with structured data before being sent to Sentry.
+ * 
+ * Example usage in your application:
  * ```kotlin
- * // Initialize Sentry
- * CardioSentry.init {
- *     dsn = "https://your-sentry-dsn"
- *     environment = "production"
- *     release = "1.0.0"
+ * // Initialize Sentry in your application (not in cardio-sentry)
+ * Sentry.init { options ->
+ *     options.dsn = "https://your-sentry-dsn@sentry.io/project-id"
+ *     options.environment = "production"
+ *     options.release = "1.0.0"
  * }
  * 
- * // Capture an exception
- * try {
- *     // Your code
- * } catch (e: Exception) {
- *     CardioSentry.captureException(e) {
- *         tag("component", "database")
- *         context("query", mapOf("sql" to "SELECT * FROM users"))
- *     }
- * }
+ * // cardio-sentry will automatically capture and structure Cardio exceptions
  * ```
  */
-object CardioSentry {
+internal object CardioSentryInternal {
     
-    private val logger = LoggerFactory.getLogger(CardioSentry::class.java)
-    
-    /**
-     * Initialize Sentry with the provided configuration.
-     * 
-     * @param configure Configuration builder for Sentry options
-     */
-    fun init(configure: SentryOptions.() -> Unit) {
-        try {
-            Sentry.init { options ->
-                options.configure()
-                logger.info("Cardio Sentry initialized with DSN: ${options.dsn}")
-            }
-        } catch (e: Exception) {
-            logger.error("Failed to initialize Cardio Sentry", e)
-            throw e
-        }
-    }
+    private val logger = LoggerFactory.getLogger(CardioSentryInternal::class.java)
     
     /**
-     * Capture an exception with optional additional context.
+     * Capture an exception with structured context.
+     * Internal method used by the library to automatically report exceptions.
      * 
      * @param throwable The exception to capture
      * @param configure Optional configuration for the event
@@ -64,20 +42,26 @@ object CardioSentry {
         throwable: Throwable,
         configure: (SentryEventBuilder.() -> Unit)? = null
     ) {
-        val event = SentryEvent(throwable).apply {
-            level = SentryLevel.ERROR
+        try {
+            val event = SentryEvent(throwable).apply {
+                level = SentryLevel.ERROR
+            }
+            
+            if (configure != null) {
+                val builder = SentryEventBuilder(event)
+                builder.configure()
+            }
+            
+            Sentry.captureEvent(event)
+        } catch (e: Exception) {
+            // If Sentry is not initialized or fails, just log it
+            logger.warn("Failed to capture exception to Sentry: ${e.message}")
         }
-        
-        if (configure != null) {
-            val builder = SentryEventBuilder(event)
-            builder.configure()
-        }
-        
-        Sentry.captureEvent(event)
     }
     
     /**
-     * Capture a message with optional level and additional context.
+     * Capture a message with structured context.
+     * Internal method used by the library to automatically report messages.
      * 
      * @param message The message to capture
      * @param level The severity level (default: INFO)
@@ -88,31 +72,23 @@ object CardioSentry {
         level: SentryLevel = SentryLevel.INFO,
         configure: (SentryEventBuilder.() -> Unit)? = null
     ) {
-        val event = SentryEvent().apply {
-            this.message = Message().apply {
-                this.message = message
-            }
-            this.level = level
-        }
-        
-        if (configure != null) {
-            val builder = SentryEventBuilder(event)
-            builder.configure()
-        }
-        
-        Sentry.captureEvent(event)
-    }
-    
-    /**
-     * Close the Sentry client and flush any pending events.
-     * Should be called when shutting down the application.
-     */
-    fun close() {
         try {
-            Sentry.close()
-            logger.info("Cardio Sentry closed successfully")
+            val event = SentryEvent().apply {
+                this.message = Message().apply {
+                    this.message = message
+                }
+                this.level = level
+            }
+            
+            if (configure != null) {
+                val builder = SentryEventBuilder(event)
+                builder.configure()
+            }
+            
+            Sentry.captureEvent(event)
         } catch (e: Exception) {
-            logger.error("Error closing Cardio Sentry", e)
+            // If Sentry is not initialized or fails, just log it
+            logger.warn("Failed to capture message to Sentry: ${e.message}")
         }
     }
 }

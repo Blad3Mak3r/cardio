@@ -132,7 +132,7 @@ try {
 
 ## Sentry Integration
 
-For production applications, you can add the `cardio-sentry` module to track errors with Sentry:
+For production applications, you can add the `cardio-sentry` module for automatic error tracking with Sentry:
 
 ```kotlin
 dependencies {
@@ -140,6 +140,23 @@ dependencies {
     implementation("io.github.blad3mak3r.cardio:cardio-sentry:VERSION")
 }
 ```
+
+Then initialize Sentry with Cardio's automatic enrichment:
+
+```kotlin
+import io.sentry.Sentry
+import io.github.blad3mak3r.cardio.sentry.CardioSentryBeforeSend
+
+Sentry.init { options ->
+    options.dsn = "https://your-sentry-dsn@sentry.io/project-id"
+    options.environment = "production"
+    
+    // Enable automatic Cardio exception enrichment
+    options.beforeSend = CardioSentryBeforeSend()
+}
+```
+
+All Cardio exceptions will be automatically enriched with query details, parameters, and context. No manual exception capture needed!
 
 See [cardio-sentry/README.md](cardio-sentry/README.md) for detailed usage instructions.
 

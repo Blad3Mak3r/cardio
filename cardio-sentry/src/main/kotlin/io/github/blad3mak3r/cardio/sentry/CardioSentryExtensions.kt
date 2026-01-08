@@ -26,7 +26,6 @@ import kotlin.coroutines.CoroutineContext
  * ```
  */
 class CardioSentryExceptionHandler(
-    private val captureToSentry: Boolean = true,
     private val additionalContext: Map<String, String> = emptyMap()
 ) : CoroutineExceptionHandler {
     
@@ -38,66 +37,23 @@ class CardioSentryExceptionHandler(
     override fun handleException(context: CoroutineContext, exception: Throwable) {
         logger.error("Uncaught exception in coroutine context: $context", exception)
         
-        if (captureToSentry) {
-            CardioSentry.captureException(exception) {
-                // Add coroutine context information
-                val coroutineName = context[CoroutineName]?.name
-                if (coroutineName != null) {
-                    tag("coroutine.name", coroutineName)
-                }
-                
-                tag("coroutine.context", context.toString())
-                
-                // Add any additional context provided
-                tags(additionalContext)
-                
-                // Add context information
-                context("coroutine", mapOf(
-                    "context" to context.toString(),
-                    "name" to (coroutineName ?: "unnamed")
-                ))
+        CardioSentryInternal.captureException(exception) {
+            // Add coroutine context information
+            val coroutineName = context[CoroutineName]?.name
+            if (coroutineName != null) {
+                tag("coroutine.name", coroutineName)
             }
+            
+            tag("coroutine.context", context.toString())
+            
+            // Add any additional context provided
+            tags(additionalContext)
+            
+            // Add context information
+            context("coroutine", mapOf(
+                "context" to context.toString(),
+                "name" to (coroutineName ?: "unnamed")
+            ))
         }
     }
-}
-
-/**
- * Extension function to easily capture exceptions with coroutine context.
- * 
- * Example usage:
- * ```kotlin
- * try {
- *     // Your code
- * } catch (e: Exception) {
- *     e.captureToSentry {
- *         tag("operation", "database-query")
- *         extra("query", "SELECT * FROM users")
- *     }
- *     throw e
- * }
- * ```
- */
-suspend fun Throwable.captureToSentry(configure: (SentryEventBuilder.() -> Unit)? = null) {
-    CardioSentry.captureException(this, configure)
-}
-
-/**
- * Extension function to capture a message with Sentry from a coroutine context.
- * 
- * Example usage:
- * ```kotlin
- * suspend fun myFunction() {
- *     captureSentryMessage("Operation completed") {
- *         tag("component", "database")
- *         extra("duration", 1500)
- *     }
- * }
- * ```
- */
-suspend fun captureSentryMessage(
-    message: String,
-    level: SentryLevel = SentryLevel.INFO,
-    configure: (SentryEventBuilder.() -> Unit)? = null
-) {
-    CardioSentry.captureMessage(message, level, configure)
 }
