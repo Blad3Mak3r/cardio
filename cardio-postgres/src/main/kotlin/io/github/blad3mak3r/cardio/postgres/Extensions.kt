@@ -13,9 +13,30 @@ suspend inline fun <T> Connection.use(block: suspend (Connection) -> T): T {
 }
 
 inline fun <reified T> Row.getAsNullable(name: String): T? {
-    return this.get(name, T::class.java)
+    return try {
+        this.get(name, T::class.java)
+    } catch (e: Exception) {
+        // If column doesn't exist, provide helpful error with available columns
+        val metadata = try {
+            this.metadata
+        } catch (_: Exception) {
+            null
+        }
+        val availableColumns = metadata?.columnMetadatas?.map { it.name } ?: emptyList()
+        throw CardioColumnNotFoundException(name, availableColumns)
+    }
 }
 
 inline fun <reified T> Row.getAs(name: String): T {
-    return getAsNullable(name) ?: error("Column '$name' is null")
+    val value = getAsNullable<T>(name)
+    if (value == null) {
+        val metadata = try {
+            this.metadata
+        } catch (_: Exception) {
+            null
+        }
+        val availableColumns = metadata?.columnMetadatas?.map { it.name }
+        throw CardioNullColumnException(name, availableColumns)
+    }
+    return value
 }
