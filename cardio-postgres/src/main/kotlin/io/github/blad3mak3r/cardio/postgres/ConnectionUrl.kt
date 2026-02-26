@@ -12,8 +12,8 @@ import java.net.URI
  *
  * Format: `postgres://[user[:password]@]host[:port][/database][?param=value&...]`
  *
- * Recognised query parameters (case-insensitive):
- * - `sslmode` → enables SSL when set to `require`, `verify-ca` or `verify-full`
+ * Recognised query parameters (case-insensitive key, case-sensitive value):
+ * - `sslmode` → `disable` | `allow` | `prefer` | `require` | `verify-ca` | `verify-full`
  *
  * Example:
  * ```kotlin
@@ -62,9 +62,7 @@ fun pgConnectOptionsFromUrl(connectionUrl: String): PgConnectOptions {
                 it[0].lowercase() to (if (it.size == 2) it[1] else "")
             }
             when (key) {
-                "sslmode" -> {
-                    this.sslMode = SslMode.of(value)
-                }
+                "sslmode" -> this.sslMode = SslMode.of(value)
             }
         }
     }
