@@ -6,12 +6,11 @@ import io.vertx.pgclient.PgConnectOptions
 import io.vertx.sqlclient.Pool
 import io.vertx.sqlclient.PoolOptions
 import io.vertx.sqlclient.SqlConnection
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.withContext
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-open class Cardio(internal val pool: Pool) : CoroutineScope by CardioScope {
+open class Cardio(internal val pool: Pool) {
 
     data class Configuration(
         var connectOptions: PgConnectOptions = PgConnectOptions(),

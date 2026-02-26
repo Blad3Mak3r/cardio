@@ -1,13 +1,8 @@
 package io.github.blad3mak3r.cardio.postgres
 
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.currentCoroutineContext
-import kotlin.coroutines.CoroutineContext
 
-open class CardioRepository<C : Cardio>(val db: C) : CoroutineScope {
-
-    override val coroutineContext: CoroutineContext
-        get() = db.coroutineContext
+open class CardioRepository<C : Cardio>(val db: C) {
 
     protected suspend fun <T> transaction(block: suspend CardioTransaction.() -> T): T {
         return db.inTransaction(block)
