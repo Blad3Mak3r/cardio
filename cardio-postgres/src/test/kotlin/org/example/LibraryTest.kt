@@ -62,14 +62,14 @@ class LibraryTest {
                     users.keys.toTypedArray(),
                     users.values.toTypedArray()
                 )
-            ).await()
+            )
         }
 
         suspend fun getUser(id: Long) = query(
             stmt = "SELECT id, name FROM users WHERE user_id = ${'$'}1",
             args = listOf(id),
             transform = User::transform
-        ).await().firstOrNull()
+        ).firstOrNull()
 
         suspend fun create(id: Long, name: String) = execute(
             stmt = """
@@ -79,12 +79,12 @@ class LibraryTest {
                 ($1, $2)
             """.trimIndent(),
             args = listOf(id, name)
-        ).await()
+        )
 
         suspend fun getAll() = query(
             stmt = "SELECT id, name FROM users",
             transform = User::transform
-        ).await()
+        )
 
         suspend fun delete(id: Long) = query(
             stmt = $$"""
@@ -93,7 +93,7 @@ class LibraryTest {
             """.trimIndent(),
             args = listOf(id),
             transform = User::transform
-        ).await().firstOrNull()
+        ).firstOrNull()
     }
 
     companion object {

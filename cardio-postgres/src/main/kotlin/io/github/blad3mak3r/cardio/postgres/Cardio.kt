@@ -7,8 +7,6 @@ import io.vertx.sqlclient.Pool
 import io.vertx.sqlclient.PoolOptions
 import io.vertx.sqlclient.SqlConnection
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -40,18 +38,18 @@ open class Cardio(internal val pool: Pool) : CoroutineScope by CardioScope {
                 query(stmt = "SELECT version()") { row ->
                     row.getString("version")
                 }.first()
-            }.await()
+            }
             logger.info("Connected to Postgres version: $version")
             return c
         }
     }
 
-    fun <T> withConnection(block: suspend (conn: SqlConnection) -> T): Deferred<T> = async {
+    suspend fun <T> withConnection(block: suspend (conn: SqlConnection) -> T): T {
         val conn = pool.connection.coAwait()
-        conn.use(block)
+        return conn.use(block)
     }
 
-    suspend fun <T> inTransaction(block: suspend CardioTransaction.() -> T): Deferred<T> {
+    suspend fun <T> inTransaction(block: suspend CardioTransaction.() -> T): T {
         return withConnection { conn ->
             val tx = conn.begin().coAwait()
             val cardioTx = CardioTransaction(conn)
