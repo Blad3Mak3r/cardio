@@ -55,7 +55,7 @@ class LibraryTest {
                     INSERT INTO users
                     (id, name)
                     VALUES
-                    (${'$'}1, ${'$'}2)
+                    ($1, $2)
                     RETURNING id, name
                 """.trimIndent(),
                 args = listOf(
@@ -76,7 +76,7 @@ class LibraryTest {
                 INSERT INTO users
                 (id, name)
                 VALUES
-                (${'$'}1, ${'$'}2)
+                ($1, $2)
             """.trimIndent(),
             args = listOf(id, name)
         )
@@ -87,8 +87,8 @@ class LibraryTest {
         )
 
         suspend fun delete(id: Long) = query(
-            stmt = """
-                DELETE FROM users WHERE id = ${'$'}1
+            stmt = $$"""
+                DELETE FROM users WHERE id = $1
                 RETURNING id, name
             """.trimIndent(),
             args = listOf(id),
