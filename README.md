@@ -14,13 +14,7 @@ Cardio is a lightweight Kotlin library designed to simplify interaction with Pos
 To get started, create an instance of `Cardio` by configuring the PostgreSQL connection and the pool:
 ```kotlin
 val cardio = Cardio.create<Cardio> {
-    connectOptions = PgConnectOptions().apply {
-        host = "localhost"
-        port = 5432
-        database = "my_database"
-        user = "user"
-        password = "password"
-    }
+    url("postgres://user:password@localhost:5432/my_database?sslmode=disable
     poolOptions = PoolOptions().apply {
         maxSize = 10
     }
