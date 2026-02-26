@@ -1,4 +1,4 @@
-# Cardio
+# Cardio [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Blad3Mak3r/cardio)
 Cardio is a lightweight Kotlin library designed to simplify interaction with PostgreSQL databases using Vert.x PG Client reactively and with coroutines.
 
 ## Features
