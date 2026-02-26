@@ -6,10 +6,10 @@ package org.example
 import io.github.blad3mak3r.cardio.postgres.Cardio
 import io.github.blad3mak3r.cardio.postgres.CardioRepository
 import io.github.blad3mak3r.cardio.postgres.getAs
-import io.vertx.pgclient.PgConnectOptions
+import io.github.blad3mak3r.cardio.postgres.Row
+import io.github.blad3mak3r.cardio.postgres.url
 import io.vertx.sqlclient.Pool
 import io.vertx.sqlclient.PoolOptions
-import io.vertx.sqlclient.Row
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -99,13 +99,7 @@ class LibraryTest {
     companion object {
         val client = runBlocking {
             Cardio.create<MyCardio> {
-                connectOptions = PgConnectOptions().apply {
-                    host = "localhost"
-                    port = 5432
-                    database = "testdb"
-                    user = "testuser"
-                    password = "testpassword"
-                }
+                url("postgres://testuser:testpassword@localhost:5432/testdb")
                 poolOptions = PoolOptions().apply {
                     maxSize = 1
                 }
