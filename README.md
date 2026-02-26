@@ -8,6 +8,48 @@ Cardio is a lightweight Kotlin library designed to simplify interaction with Pos
 - **Repositories:** `CardioRepository` base class for structuring data access.
 - **Connection Pooling:** Automatic connection pool management.
 
+## Installation
+
+Replace `VERSION` with the latest release (current: ![](https://maven-badges.sml.io/sonatype-central/io.github.blad3mak3r.cardio/cardio-postgres/badge.svg)).
+
+### Gradle (Kotlin DSL)
+```kotlin
+dependencies {
+    implementation("io.github.blad3mak3r.cardio:cardio-postgres:VERSION")
+}
+```
+
+### Gradle (Groovy DSL)
+```groovy
+dependencies {
+    implementation 'io.github.blad3mak3r.cardio:cardio-postgres:VERSION'
+}
+```
+
+### Gradle Version Catalog (`libs.versions.toml`)
+```toml
+[versions]
+cardio = "VERSION"
+
+[libraries]
+cardio-postgres = { module = "io.github.blad3mak3r.cardio:cardio-postgres", version.ref = "cardio" }
+```
+Then in your `build.gradle.kts`:
+```kotlin
+dependencies {
+    implementation(libs.cardio.postgres)
+}
+```
+
+### Maven
+```xml
+<dependency>
+    <groupId>io.github.blad3mak3r.cardio</groupId>
+    <artifactId>cardio-postgres</artifactId>
+    <version>VERSION</version>
+</dependency>
+```
+
 ## Usage
 
 ### Configuration
