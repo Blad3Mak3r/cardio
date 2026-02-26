@@ -6,16 +6,14 @@ coroutines = "1.10.2"
 junit-jupiter-engine = "6.0.3"
 kotlin = "2.3.10"
 mavenPublish = "0.35.0"
-r2dbc-pool = "1.0.2.RELEASE"
-r2dbc-postgres = "1.1.1.RELEASE"
+vertx = "5.0.8"
 slf4j = "2.0.17"
 
 [libraries]
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
-coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactor", version.ref = "coroutines" }
 junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit-jupiter-engine" }
-r2dbc-pool = { module = "io.r2dbc:r2dbc-pool", version.ref = "r2dbc-pool" }
-r2dbc-postgres = { module = "org.postgresql:r2dbc-postgresql", version.ref = "r2dbc-postgres" }
+vertx-pg-client = { module = "io.vertx:vertx-pg-client", version.ref = "vertx" }
+vertx-kotlin-coroutines = { module = "io.vertx:vertx-lang-kotlin-coroutines", version.ref = "vertx" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 
 [plugins]

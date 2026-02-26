@@ -1,14 +1,11 @@
 package io.github.blad3mak3r.cardio.postgres
 
-import io.r2dbc.spi.Connection
-import io.r2dbc.spi.Row
-import io.r2dbc.spi.RowMetadata
-import kotlinx.coroutines.reactive.awaitSingle
-import kotlinx.coroutines.runBlocking
-import reactor.core.publisher.Flux
+import io.vertx.kotlin.coroutines.coAwait
+import io.vertx.sqlclient.SqlConnection
+import io.vertx.sqlclient.Tuple
 import kotlin.coroutines.CoroutineContext
 
-class CardioTransaction(val c: Connection) : AutoCloseable {
+class CardioTransaction(val c: SqlConnection) {
 
     data class Context(val tx: CardioTransaction) : CoroutineContext.Element {
         companion object Key : CoroutineContext.Key<Context>
@@ -17,50 +14,28 @@ class CardioTransaction(val c: Connection) : AutoCloseable {
             get() = Key
     }
 
-    override fun close() = runBlocking<Unit> {
-        c.close().awaitSingle()
-    }
-
     suspend fun <T> query(
         stmt: String,
         args: List<Any?> = emptyList(),
-        transform: (Row, RowMetadata) -> T
+        transform: (Row) -> T
     ): List<T> {
-        val statement = c.createStatement(stmt)
-
-        args.forEachIndexed { i, v ->
-            when(v) {
-                null -> statement.bindNull(i, Any::class.java)
-                else -> statement.bind(i, v)
-            }
+        val result = if (args.isEmpty()) {
+            c.query(stmt).execute().coAwait()
+        } else {
+            c.preparedQuery(stmt).execute(Tuple.wrap(args)).coAwait()
         }
-
-        return Flux.from(statement.execute())
-            .flatMap { r ->
-                r.map { r, m ->
-                    transform(r, m)
-                }
-            }
-            .collectList()
-            .awaitSingle()
+        return result.map { transform(it) }
     }
 
     suspend fun execute(
         stmt: String,
         args: List<Any?> = emptyList()
     ): Long {
-        val statement = c.createStatement(stmt)
-
-        args.forEachIndexed { i, v ->
-            when(v) {
-                null -> statement.bindNull(i, Any::class.java)
-                else -> statement.bind(i, v)
-            }
+        val result = if (args.isEmpty()) {
+            c.query(stmt).execute().coAwait()
+        } else {
+            c.preparedQuery(stmt).execute(Tuple.wrap(args)).coAwait()
         }
-
-        return Flux.from(statement.execute())
-            .flatMap { result -> result.rowsUpdated }
-            .reduce(0L) { acc, value -> acc + value }
-            .awaitSingle()
+        return result.rowCount().toLong()
     }
 }

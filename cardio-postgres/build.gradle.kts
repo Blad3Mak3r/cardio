@@ -28,11 +28,10 @@ dependencies {
 
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
-    api(libs.r2dbc.pool)
-    api(libs.r2dbc.postgres)
+    api(libs.vertx.pg.client)
 
     implementation(libs.coroutines.core)
-    implementation(libs.coroutines.reactor)
+    implementation(libs.vertx.kotlin.coroutines)
 
     implementation(libs.slf4j.api)
 }

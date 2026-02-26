@@ -1,34 +1,38 @@
 # Cardio
-Cardio is a lightweight Kotlin library designed to simplify interaction with PostgreSQL databases using R2DBC reactively and with coroutines.
+Cardio is a lightweight Kotlin library designed to simplify interaction with PostgreSQL databases using Vert.x PG Client reactively and with coroutines.
+
 ## Features
-- **Reactive and Non-Blocking:** Built on R2DBC for high performance.
+- **Reactive and Non-Blocking:** Built on Vert.x PG Client for high performance.
 - **Coroutines Support:** API designed to be used with Kotlin Coroutines.
 - **Transaction Management:** Simple transaction handling with `inTransaction` blocks.
 - **Repositories:** `CardioRepository` base class for structuring data access.
 - **Connection Pooling:** Automatic connection pool management.
+
 ## Usage
+
 ### Configuration
 To get started, create an instance of `Cardio` by configuring the PostgreSQL connection and the pool:
 ```kotlin
 val cardio = Cardio.create<Cardio> {
-    r2dbcConfig = {
-        host("localhost")
-        port(5432)
-        database("my_database")
-        username("user")
-        password("password")
+    connectOptions = PgConnectOptions().apply {
+        host = "localhost"
+        port = 5432
+        database = "my_database"
+        user = "user"
+        password = "password"
     }
-    poolConfig = {
-        maxSize(10)
+    poolOptions = PoolOptions().apply {
+        maxSize = 10
     }
 }
 ```
+
 ### Queries and Transactions
 You can safely execute queries within a transaction:
 ```kotlin
 cardio.inTransaction { tx ->
     // Execute a query
-    val users = tx.query("SELECT * FROM users WHERE active = $1", listOf(true)) { row, _ ->
+    val users = tx.query("SELECT * FROM users WHERE active = $1", listOf(true)) { row ->
         // Map results
         User(
             id = row.getAs<Int>("id"),
@@ -39,12 +43,13 @@ cardio.inTransaction { tx ->
     tx.execute("UPDATE users SET last_login = NOW() WHERE active = $1", listOf(true))
 }
 ```
+
 ### Repositories
 It is recommended to extend `CardioRepository` to encapsulate data access logic:
 ```kotlin
 class UserRepository(db: Cardio) : CardioRepository<Cardio>(db) {
     suspend fun findById(id: Int): User? {
-        return query("SELECT * FROM users WHERE id = $1", listOf(id)) { row, _ ->
+        return query("SELECT * FROM users WHERE id = $1", listOf(id)) { row ->
             User(
                 id = row.getAs<Int>("id"),
                 name = row.getAs<String>("name")
@@ -56,25 +61,25 @@ class UserRepository(db: Cardio) : CardioRepository<Cardio>(db) {
     }
 }
 ```
+
 ### Extending Cardio
 The `Cardio` class is `open`, allowing you to extend it to create a custom database context. This is useful for creating strongly-typed repositories that depend on your specific database class.
 
 ```kotlin
-
 // Define your custom database class
-class MyDb(pool: ConnectionPool) : Cardio(pool)
+class MyDb(pool: Pool) : Cardio(pool)
 
 // Create an instance using the generic create method
 val myDb = Cardio.create<MyDb> {
-    r2dbcConfig = {
-        host("localhost")
-        port(5432)
-        database("my_database")
-        username("user")
-        password("password")
+    connectOptions = PgConnectOptions().apply {
+        host = "localhost"
+        port = 5432
+        database = "my_database"
+        user = "user"
+        password = "password"
     }
-    poolConfig = {
-        maxSize(10)
+    poolOptions = PoolOptions().apply {
+        maxSize = 10
     }
 }
 
@@ -90,6 +95,7 @@ val myRepo = MyRepo(myDb)
 ```
 
 The generic `create<T>` method uses reflection to instantiate your custom `Cardio` subclass, automatically handling the connection pool configuration and initialization.
+
 ## Useful Extensions
 The library includes extensions to facilitate retrieving data from rows (`Row`):
 - `row.getAs<T>("column_name")`: Gets the column value, throws error if null.

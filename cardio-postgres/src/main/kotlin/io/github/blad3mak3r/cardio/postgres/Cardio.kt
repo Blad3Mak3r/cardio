@@ -1,21 +1,20 @@
 package io.github.blad3mak3r.cardio.postgres
 
-import io.r2dbc.pool.ConnectionPool
-import io.r2dbc.pool.ConnectionPoolConfiguration
-import io.r2dbc.postgresql.PostgresqlConnectionConfiguration
-import io.r2dbc.postgresql.PostgresqlConnectionFactory
-import io.r2dbc.spi.Connection
-import kotlinx.coroutines.reactive.awaitFirstOrNull
-import kotlinx.coroutines.reactor.awaitSingle
+import io.vertx.kotlin.coroutines.coAwait
+import io.vertx.pgclient.PgBuilder
+import io.vertx.pgclient.PgConnectOptions
+import io.vertx.sqlclient.Pool
+import io.vertx.sqlclient.PoolOptions
+import io.vertx.sqlclient.SqlConnection
 import kotlinx.coroutines.withContext
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-open class Cardio (internal val pool: ConnectionPool) {
+open class Cardio(internal val pool: Pool) {
 
     data class Configuration(
-        var r2dbcConfig: PostgresqlConnectionConfiguration.Builder.() -> Unit = {},
-        var poolConfig: ConnectionPoolConfiguration.Builder.() -> Unit = {}
+        var connectOptions: PgConnectOptions = PgConnectOptions(),
+        var poolOptions: PoolOptions = PoolOptions()
     )
 
     companion object {
@@ -25,24 +24,18 @@ open class Cardio (internal val pool: ConnectionPool) {
             create(Configuration().apply(builder))
 
         suspend inline fun <reified T : Cardio> create(configuration: Configuration): T {
-            val r2dbcConfig = PostgresqlConnectionConfiguration.builder().apply(configuration.r2dbcConfig).build()
-            val poolConfig = ConnectionPoolConfiguration.builder()
-                .connectionFactory(PostgresqlConnectionFactory(r2dbcConfig))
-                .apply(configuration.poolConfig)
+            val pool: Pool = PgBuilder.pool()
+                .connectingTo(configuration.connectOptions)
+                .with(configuration.poolOptions)
                 .build()
-            val pool = ConnectionPool(poolConfig)
 
-            val c = T::class.java.getDeclaredConstructor(ConnectionPool::class.java)
+            val c = T::class.java.getDeclaredConstructor(Pool::class.java)
                 .apply { isAccessible = true }
                 .newInstance(pool)
 
             val version = c.inTransaction {
-                query(
-                    stmt = """
-                        SELECT version()
-                    """.trimIndent()
-                ) { row, _ ->
-                    row.getAs<String>("version")
+                query(stmt = "SELECT version()") { row ->
+                    row.getString("version")
                 }.first()
             }
             logger.info("Connected to Postgres version: $version")
@@ -50,20 +43,23 @@ open class Cardio (internal val pool: ConnectionPool) {
         }
     }
 
-    suspend fun <T> withConnection(block: suspend (conn: Connection) -> T): T {
-        return pool.create().awaitSingle().use(block)
+    suspend fun <T> withConnection(block: suspend (conn: SqlConnection) -> T): T {
+        val conn = pool.getConnection().coAwait()
+        return conn.use(block)
     }
 
     suspend fun <T> inTransaction(block: suspend CardioTransaction.() -> T): T {
         return withConnection { conn ->
-            conn.beginTransaction().awaitFirstOrNull()
-            val tx = CardioTransaction(conn)
+            val tx = conn.begin().coAwait()
+            val cardioTx = CardioTransaction(conn)
             try {
-                val result = withContext(CardioTransaction.Context(tx)) { tx.block() }
-                conn.commitTransaction().awaitFirstOrNull()
+                val result = withContext(CardioTransaction.Context(cardioTx)) {
+                    cardioTx.block()
+                }
+                tx.commit().coAwait()
                 result
             } catch (e: Exception) {
-                conn.rollbackTransaction().awaitFirstOrNull()
+                tx.rollback().coAwait()
                 logger.error("Transaction rolled back due to error", e)
                 throw e
             }

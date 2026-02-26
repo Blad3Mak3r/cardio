@@ -1,19 +1,20 @@
 package io.github.blad3mak3r.cardio.postgres
 
-import io.r2dbc.spi.Connection
-import io.r2dbc.spi.Row
-import kotlinx.coroutines.reactive.awaitFirstOrNull
+import io.vertx.kotlin.coroutines.coAwait
+import io.vertx.sqlclient.SqlConnection
 
-suspend inline fun <T> Connection.use(block: suspend (Connection) -> T): T {
+typealias Row = io.vertx.sqlclient.Row
+
+suspend fun <T> SqlConnection.use(block: suspend (SqlConnection) -> T): T {
     return try {
         block(this)
     } finally {
-        close().awaitFirstOrNull()
+        close().coAwait()
     }
 }
 
 inline fun <reified T> Row.getAsNullable(name: String): T? {
-    return this.get(name, T::class.java)
+    return this.get(T::class.java, name)
 }
 
 inline fun <reified T> Row.getAs(name: String): T {

@@ -6,9 +6,10 @@ package org.example
 import io.github.blad3mak3r.cardio.postgres.Cardio
 import io.github.blad3mak3r.cardio.postgres.CardioRepository
 import io.github.blad3mak3r.cardio.postgres.getAs
-import io.r2dbc.pool.ConnectionPool
-import io.r2dbc.spi.Row
-import io.r2dbc.spi.RowMetadata
+import io.vertx.pgclient.PgConnectOptions
+import io.vertx.sqlclient.Pool
+import io.vertx.sqlclient.PoolOptions
+import io.vertx.sqlclient.Row
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,17 +19,14 @@ import kotlin.test.assertTrue
 
 class LibraryTest {
 
-    class MyCardio(pool: ConnectionPool) : Cardio(pool)
+    class MyCardio(pool: Pool) : Cardio(pool)
 
     data class User(
         val id: Long,
         val name: String
     ) {
         companion object {
-            fun transform(
-                row: Row,
-                metadata: RowMetadata
-            ): User {
+            fun transform(row: Row): User {
                 return User(
                     id = row.getAs("id"),
                     name = row.getAs("name")
@@ -57,7 +55,7 @@ class LibraryTest {
                     INSERT INTO users
                     (id, name)
                     VALUES
-                    ($1, $2)
+                    (${'$'}1, ${'$'}2)
                     RETURNING id, name
                 """.trimIndent(),
                 args = listOf(
@@ -67,12 +65,9 @@ class LibraryTest {
             )
         }
 
-
         suspend fun getUser(id: Long) = query(
-            stmt = "SELECT id, name FROM users WHERE user_id = $1",
-            args = listOf(
-                id
-            ),
+            stmt = "SELECT id, name FROM users WHERE user_id = ${'$'}1",
+            args = listOf(id),
             transform = User::transform
         ).firstOrNull()
 
@@ -81,21 +76,19 @@ class LibraryTest {
                 INSERT INTO users
                 (id, name)
                 VALUES
-                ($1, $2)
+                (${'$'}1, ${'$'}2)
             """.trimIndent(),
             args = listOf(id, name)
         )
 
         suspend fun getAll() = query(
-            stmt = """
-                SELECT id, name FROM users
-            """.trimIndent(),
+            stmt = "SELECT id, name FROM users",
             transform = User::transform
         )
 
         suspend fun delete(id: Long) = query(
             stmt = """
-                DELETE FROM users WHERE id = $1
+                DELETE FROM users WHERE id = ${'$'}1
                 RETURNING id, name
             """.trimIndent(),
             args = listOf(id),
@@ -106,16 +99,15 @@ class LibraryTest {
     companion object {
         val client = runBlocking {
             Cardio.create<MyCardio> {
-                poolConfig = {
-                    initialSize(1)
-                    maxSize(1)
+                connectOptions = PgConnectOptions().apply {
+                    host = "localhost"
+                    port = 5432
+                    database = "testdb"
+                    user = "testuser"
+                    password = "testpassword"
                 }
-                r2dbcConfig = {
-                    host("localhost")
-                    port(5432)
-                    database("testdb")
-                    username("testuser")
-                    password("testpassword")
+                poolOptions = PoolOptions().apply {
+                    maxSize = 1
                 }
             }
         }
