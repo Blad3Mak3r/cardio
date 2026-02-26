@@ -20,3 +20,16 @@ inline fun <reified T> Row.getAsNullable(name: String): T? {
 inline fun <reified T> Row.getAs(name: String): T {
     return getAsNullable(name) ?: error("Column '$name' is null")
 }
+
+/**
+ * Extension function to convert a Deferred<T> to a Result<T>.
+ * It will return Result.success(value) if the Deferred completes successfully,
+ * or Result.failure(exception) if it throws an exception.
+ */
+suspend inline fun <reified T> Deferred<T>.awaitResult(): Result<T> {
+    return try {
+        Result.success(this.await())
+    } catch (e: Throwable) {
+        Result.failure(e)
+    }
+}
