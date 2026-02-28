@@ -30,3 +30,21 @@ inline fun <reified T> Row.getAsNullable(name: String): T? {
 inline fun <reified T> Row.getAs(name: String): T {
     return getAsNullable(name) ?: error("Column '$name' is null")
 }
+
+/**
+ * Extension function to get a column value as a nullable type using the column index.
+ * It uses the reified type parameter to determine the expected return type.
+ * If the column value is null, it will return null; otherwise, it will return the value cast to the expected type.
+ */
+inline fun <reified T> Row.getAsNullable(index: Int): T? {
+    return this.get(T::class.java, index)
+}
+
+/**
+ * Extension function to get a column value as a non-nullable type using the column index.
+ * It uses the reified type parameter to determine the expected return type.
+ * If the column value is null, it will throw an exception; otherwise, it will return the value cast to the expected type.
+ */
+inline fun <reified T> Row.getAs(index: Int): T {
+    return getAsNullable(index) ?: error("Column at index '$index' is null")
+}
