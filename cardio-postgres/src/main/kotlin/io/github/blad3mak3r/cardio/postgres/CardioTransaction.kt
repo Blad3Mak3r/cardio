@@ -1,6 +1,5 @@
 package io.github.blad3mak3r.cardio.postgres
 
-import io.vertx.core.buffer.Buffer
 import io.vertx.kotlin.coroutines.coAwait
 import io.vertx.sqlclient.SqlConnection
 import io.vertx.sqlclient.Tuple
@@ -9,8 +8,8 @@ import kotlin.coroutines.CoroutineContext
 class CardioTransaction(val c: SqlConnection) {
 
     companion object {
-        private fun List<Any?>.toTuple(): Tuple =
-            Tuple.wrap(this.map { if (it is ByteArray) Buffer.buffer(it) else it })
+        private fun List<Any?>.toTuple(): Tuple = Tuple.tuple(this)
+        internal val EmptyArgs = emptyList<Any?>()
     }
 
     data class Context(val tx: CardioTransaction) : CoroutineContext.Element {
@@ -22,7 +21,7 @@ class CardioTransaction(val c: SqlConnection) {
 
     suspend fun <T> query(
         stmt: String,
-        args: List<Any?> = emptyList(),
+        args: List<Any?> = EmptyArgs,
         transform: (Row) -> T
     ): List<T> {
         val result = if (args.isEmpty()) {
@@ -35,7 +34,7 @@ class CardioTransaction(val c: SqlConnection) {
 
     suspend fun execute(
         stmt: String,
-        args: List<Any?> = emptyList()
+        args: List<Any?> = EmptyArgs
     ): Long {
         val result = if (args.isEmpty()) {
             c.query(stmt).execute().coAwait()

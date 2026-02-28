@@ -1,5 +1,6 @@
 package io.github.blad3mak3r.cardio.postgres
 
+import io.github.blad3mak3r.cardio.postgres.CardioTransaction.Companion.EmptyArgs
 import kotlinx.coroutines.currentCoroutineContext
 
 open class CardioRepository<C : Cardio>(val db: C) {
@@ -8,28 +9,24 @@ open class CardioRepository<C : Cardio>(val db: C) {
         return db.inTransaction(block)
     }
 
-    protected suspend fun <T> query(
-        stmt: String,
-        args: List<Any?> = emptyList(),
-        transform: (Row) -> T
-    ): List<T> {
+    protected suspend fun tx(): CardioTransaction {
         return when (val ctx = currentCoroutineContext()[CardioTransaction.Context]?.tx) {
             null -> db.withConnection { connection ->
-                val tx = CardioTransaction(connection)
-                tx.query(stmt, args, transform)
+                CardioTransaction(connection)
             }
-            else -> ctx.query(stmt, args, transform)
+            else -> ctx
         }
     }
 
-    protected suspend fun execute(stmt: String, args: List<Any?> = emptyList()): Long {
-        return when (val ctx = currentCoroutineContext()[CardioTransaction.Context]?.tx) {
-            null -> db.withConnection { connection ->
-                val tx = CardioTransaction(connection)
-                tx.execute(stmt, args)
-            }
-            else -> ctx.execute(stmt, args)
-        }
-    }
+    protected suspend fun <T> query(
+        stmt: String,
+        args: List<Any?> = EmptyArgs,
+        transform: (Row) -> T
+    ): List<T> = tx().query(stmt, args, transform)
+
+    protected suspend fun execute(
+        stmt: String,
+        args: List<Any?> = EmptyArgs
+    ): Long = tx().execute(stmt, args)
 
 }
