@@ -29,6 +29,7 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
     api(libs.vertx.pg.client)
+    implementation(project(":cardio-protocol"))
 
     implementation(libs.coroutines.core)
     implementation(libs.vertx.kotlin.coroutines)
