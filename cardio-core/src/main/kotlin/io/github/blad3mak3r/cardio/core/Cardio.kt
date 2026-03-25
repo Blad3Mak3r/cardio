@@ -5,7 +5,6 @@ import io.github.blad3mak3r.cardio.protocol.codec.Param
 import io.github.blad3mak3r.cardio.protocol.codec.TypeCodecRegistry
 import io.github.blad3mak3r.cardio.protocol.connection.Connection
 import io.github.blad3mak3r.cardio.protocol.connection.ConnectionPool
-import kotlin.jvm.Throws
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
