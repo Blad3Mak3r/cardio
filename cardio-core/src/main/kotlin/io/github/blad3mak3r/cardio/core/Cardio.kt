@@ -21,7 +21,7 @@ open class Cardio internal constructor(
         var username: String        = ""
         var password: String        = ""
         var ssl: Connection.SslMode = Connection.SslMode.DISABLE
-        var applicationName: String = "cardio"
+        var applicationName: String = "cardio-pg-client"
         var maxSize: Int            = 10
         var minSize: Int            = 2
         var acquireTimeout: Duration = 30.seconds
@@ -80,20 +80,20 @@ open class Cardio internal constructor(
         pool.use { conn -> block(CardioTransaction(conn)) }
 
     companion object {
-        fun create(block: Configuration.() -> Unit): Cardio {
+        fun new(block: Configuration.() -> Unit): Cardio {
             val config = Configuration().apply(block)
             return Cardio(ConnectionPool(config.buildPoolConfig()))
         }
 
         /**
          * Crea una subclase de [Cardio].
-         * Requiere un constructor primario que acepte [PgConnectionPool].
+         * Requiere un constructor primario que acepte [ConnectionPool].
          *
          * Nota: este es el único punto de reflection en toda la librería.
          * Si prefieres zero-reflection absoluto, usa [create] y pasa la
          * instancia manualmente al constructor de tu subclase.
          */
-        inline fun <reified T : Cardio> create(noinline block: Configuration.() -> Unit): T {
+        inline fun <reified T : Cardio> newCustom(noinline block: Configuration.() -> Unit): T {
             val config = Configuration().apply(block)
             val pool   = ConnectionPool(config.buildPoolConfig())
             return T::class.java
