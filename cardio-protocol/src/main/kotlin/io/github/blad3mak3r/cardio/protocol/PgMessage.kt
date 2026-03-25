@@ -114,7 +114,7 @@ sealed interface PgMessage {
     ) : Backend
 
     data class DataRow(
-        val colums: List<ByteArray?>
+        val columns: List<ByteArray?>
     ) : Backend
 
     data class CommandComplete(
