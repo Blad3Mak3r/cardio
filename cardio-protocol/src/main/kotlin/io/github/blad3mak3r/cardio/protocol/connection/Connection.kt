@@ -136,12 +136,12 @@ class Connection private constructor(
         state = State.InTransaction
     }
 
-    suspend fun commit() {
+    suspend fun commitTransaction() {
         execute("COMMIT")
         state = State.Ready
     }
 
-    suspend fun rollback() {
+    suspend fun rollbackTransaction() {
         execute("ROLLBACK")
         state = State.Ready
     }
