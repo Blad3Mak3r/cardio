@@ -1,5 +1,7 @@
 package io.github.blad3mak3r.cardio.protocol.codec
 
+import kotlin.uuid.ExperimentalUuidApi
+
 class TypeCodecRegistry {
     @PublishedApi internal val byCodec = mutableMapOf<TypeCodec<*>, CodecEntry<*>>()
     @PublishedApi internal val byOid = mutableMapOf<Int, CodecEntry<*>>()
@@ -17,6 +19,7 @@ class TypeCodecRegistry {
         (byOid[oid] as? CodecEntry<T>)?.decode(bytes)
 
     companion object {
+        @OptIn(ExperimentalUuidApi::class)
         fun default(): TypeCodecRegistry = TypeCodecRegistry()
             .register(Int2Codec).register(Int4Codec).register(Int8Codec)
             .register(Float4Codec).register(Float8Codec)
