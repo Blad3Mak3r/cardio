@@ -57,11 +57,11 @@ sealed interface PgMessage {
         val maxRows: Int = 0
     ) : Frontend
 
-    object Sync : Frontend
+    data object Sync : Frontend
 
-    object Flush : Frontend
+    data object Flush : Frontend
 
-    object Terminate : Frontend
+    data object Terminate : Frontend
 
     data class CancelRequest(
         val processId: Int,
@@ -72,7 +72,7 @@ sealed interface PgMessage {
 
     sealed interface Authentication : Backend {
 
-        object Ok : Authentication
+        data object Ok : Authentication
 
         data class MD5(
             val salt: ByteArray
@@ -128,13 +128,13 @@ sealed interface PgMessage {
      * EXTENDED QUERY
      */
 
-    object ParseComplete : Backend
+    data object ParseComplete : Backend
 
-    object BindComplete : Backend
+    data object BindComplete : Backend
 
-    object CloseComplete : Backend
+    data object CloseComplete : Backend
 
-    object NoData : Backend
+    data object NoData : Backend
 
     data class ParameterDescription(
         val paramTypeOids: List<Int>
@@ -180,7 +180,7 @@ sealed interface PgMessage {
         val payload: String
     ) : Backend
 
-    object EmptyQueryResponse : Backend
+    data object EmptyQueryResponse : Backend
 
     data class CopyInResponse(
         val format: Int,
