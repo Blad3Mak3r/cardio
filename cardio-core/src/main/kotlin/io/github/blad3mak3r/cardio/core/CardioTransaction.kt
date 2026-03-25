@@ -23,7 +23,7 @@ class CardioTransaction internal constructor(
         sql: String,
         vararg params: Param<*>,
     ): Long = conn.execute(sql, *params)
-    
+
     suspend fun commit() = conn.commitTransaction()
     suspend fun rollback() = conn.rollbackTransaction()
 }
