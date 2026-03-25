@@ -7,6 +7,6 @@ repositories {
 }
 
 dependencies {
-    implementation(libs.vertx.kotlin.coroutines)
+    api(libs.coroutines.core)
     api(libs.ktor.network)
 }
