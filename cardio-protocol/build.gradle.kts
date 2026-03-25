@@ -10,3 +10,9 @@ dependencies {
     api(libs.coroutines.core)
     api(libs.ktor.network)
 }
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}

@@ -18,11 +18,25 @@ class Row @PublishedApi internal constructor(
     fun <T : Any> getOrNull(name: String, codec: TypeCodec<T>): T? =
         codec.decode(columnBytes(name))
 
+    fun <T : Any> get(index: Int, codec: TypeCodec<T>): T =
+        getOrNull(index, codec) ?: error("Column at index $index is null — use getOrNull()")
+
+    fun <T : Any> getOrNull(index: Int, codec: TypeCodec<T>): T? =
+        codec.decode(data.columns[index])
+
     inline fun <reified T : Any> get(name: String): T =
         getOrNull<T>(name) ?: error("Column '$name' is null — use getOrNull<${T::class.simpleName}>()")
+
+    inline fun <reified T : Any> get(index: Int): T =
+        getOrNull<T>(index) ?: error("Column at index $index is null — use getOrNull<${T::class.simpleName}>()")
+
+    inline fun <reified T : Any> getOrNull(index: Int): T? {
+        return registry.decodeByOid(description.fields[index].typeOid, data.columns[index])
+    }
+
     inline fun <reified T : Any> getOrNull(name: String): T? {
         val i = index(name)
-        return registry.decodeByOid(description.fields[i].typeOid, data.columns[i])
+        return getOrNull(i)
     }
 
     @PublishedApi

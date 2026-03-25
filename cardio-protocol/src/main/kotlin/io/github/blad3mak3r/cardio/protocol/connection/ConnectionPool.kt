@@ -14,7 +14,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeout
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -175,7 +174,13 @@ class ConnectionPool(
         pendingAcquires.incrementAndGet()
         return try {
             withTimeout(configuration.acquireTimeout) {
-                semaphore.withPermit { getOrCreate() }
+                semaphore.acquire()
+                try {
+                    getOrCreate()
+                } catch (e: Exception) {
+                    semaphore.release()
+                    throw e
+                }
             }
         } catch (_: TimeoutCancellationException) {
             throw PgPoolTimeoutException(
@@ -189,17 +194,19 @@ class ConnectionPool(
     internal suspend fun release(conn: PooledConnection) {
         totalReleased.incrementAndGet()
 
-        if (closed || conn.isFailed) {
-            destroy(conn)
-            return
-        }
+        try {
+            if (closed || conn.isFailed) {
+                destroy(conn)
+                return
+            }
 
-        // Try to return to the idle channel; if full, destroy
-        if (!idlePool.trySend(conn).isSuccess) {
-            destroy(conn)
+            // Try to return to the idle channel; if full, destroy
+            if (!idlePool.trySend(conn).isSuccess) {
+                destroy(conn)
+            }
+        } finally {
+            semaphore.release()
         }
-
-        semaphore.release()
     }
 
     private suspend fun getOrCreate(): PooledConnection {
