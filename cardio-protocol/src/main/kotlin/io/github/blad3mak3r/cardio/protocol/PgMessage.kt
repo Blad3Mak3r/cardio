@@ -37,7 +37,7 @@ sealed interface PgMessage {
     data class Parse(
         val statementName: String = "",
         val sql: String,
-        val paramTypeOid: List<Int> = emptyList()
+        val paramTypeOids: List<Int> = emptyList()
     ) : Frontend
 
     data class Bind(
