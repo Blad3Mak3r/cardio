@@ -419,7 +419,7 @@ class Connection private constructor(
     companion object {
         suspend fun connect(
             config: Configuration,
-            registry: TypeCodecRegistry = TypeCodecRegistry.default(),
+            registry: TypeCodecRegistry = TypeCodecRegistry.Default,
             context: CoroutineContext = Dispatchers.IO
         ): Connection {
             val selectorManager = SelectorManager(context)

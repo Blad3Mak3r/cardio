@@ -14,6 +14,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeout
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -35,15 +36,13 @@ class ConnectionPool(
         val healthCheckInterval: Duration = 30.seconds,
         val maxReconnectAttempts: Int = 5,
         val reconnectBackoff: Duration = 500.milliseconds,
-        val registry: TypeCodecRegistry = TypeCodecRegistry.default(),
+        val registry: TypeCodecRegistry = TypeCodecRegistry.Default,
     )
 
     class PooledConnection internal constructor(
         internal val inner: Connection,
         private val pool: ConnectionPool
     ) {
-        private var released = false
-
         internal val acquiredAt: Long = System.currentTimeMillis()
 
         suspend fun <T> query(
@@ -63,12 +62,6 @@ class ConnectionPool(
 
         val isReady:  Boolean get() = inner.isReady
         val isFailed: Boolean get() = inner.isFailed
-
-        suspend fun release() {
-            if (released) return
-            released = true
-            pool.release(this)
-        }
     }
 
     data class Stats(
@@ -120,14 +113,25 @@ class ConnectionPool(
     }
 
     suspend fun <T> use(block: suspend (PooledConnection) -> T): T {
-        val conn: PooledConnection = acquire()
+        check(!closed) { "Connection pool is closed" }
+        pendingAcquires.incrementAndGet()
         return try {
-            block(conn)
-        } catch (e: Exception) {
-            if (conn.isFailed) destroy(conn) else conn.release()
-            throw e
+            withTimeout(configuration.acquireTimeout) {
+                semaphore.withPermit {
+                    val conn = getOrCreate()
+                    try {
+                        block(conn)
+                    } finally {
+                        returnToPool(conn)
+                    }
+                }
+            }
+        } catch (_: TimeoutCancellationException) {
+            throw PgPoolTimeoutException(
+                configuration.acquireTimeout, configuration.maxSize, pendingAcquires.get() - 1
+            )
         } finally {
-            conn.release()
+            pendingAcquires.decrementAndGet()
         }
     }
 
@@ -169,46 +173,6 @@ class ConnectionPool(
         }
     }
 
-    internal suspend fun acquire(): PooledConnection {
-        check(!closed) { "Connection pool is closed" }
-        pendingAcquires.incrementAndGet()
-        return try {
-            withTimeout(configuration.acquireTimeout) {
-                semaphore.acquire()
-                try {
-                    getOrCreate()
-                } catch (e: Exception) {
-                    semaphore.release()
-                    throw e
-                }
-            }
-        } catch (_: TimeoutCancellationException) {
-            throw PgPoolTimeoutException(
-                configuration.acquireTimeout, configuration.maxSize, pendingAcquires.get() - 1
-            )
-        } finally {
-            pendingAcquires.decrementAndGet()
-        }
-    }
-
-    internal suspend fun release(conn: PooledConnection) {
-        totalReleased.incrementAndGet()
-
-        try {
-            if (closed || conn.isFailed) {
-                destroy(conn)
-                return
-            }
-
-            // Try to return to the idle channel; if full, destroy
-            if (!idlePool.trySend(conn).isSuccess) {
-                destroy(conn)
-            }
-        } finally {
-            semaphore.release()
-        }
-    }
-
     private suspend fun getOrCreate(): PooledConnection {
         // 1. Reuse idle connection if it exists and is healthy
         val idle = idlePool.tryReceive().getOrNull()
@@ -247,7 +211,21 @@ class ConnectionPool(
         )
     }
 
-    private suspend fun destroy(conn: PooledConnection) {
+    /** Returns `conn` to the idle pool, or destroys it if the pool is closed/full. Never touches the semaphore. */
+    private suspend fun returnToPool(conn: PooledConnection) {
+        totalReleased.incrementAndGet()
+        if (closed || conn.isFailed) {
+            destroyInner(conn)
+            return
+        }
+        // Try to return to the idle channel; if full, destroy
+        if (!idlePool.trySend(conn).isSuccess) {
+            destroyInner(conn)
+        }
+    }
+
+    /** Closes the underlying connection and updates counters. Never touches the semaphore. */
+    private suspend fun destroyInner(conn: PooledConnection) {
         runCatching { conn.inner.close() }
         totalConns.decrementAndGet()
         totalDestroyed.incrementAndGet()
@@ -258,7 +236,7 @@ class ConnectionPool(
     }
 
     private fun destroyQuietly(conn: PooledConnection) {
-        scope.launch { destroy(conn) }
+        scope.launch { destroyInner(conn) }
     }
 
     private suspend fun warmUp() {
@@ -282,7 +260,7 @@ class ConnectionPool(
             val pooled = PooledConnection(conn, this)
             totalConns.incrementAndGet()
             totalCreated.incrementAndGet()
-            if (!idlePool.trySend(pooled).isSuccess) destroy(pooled)
+            if (!idlePool.trySend(pooled).isSuccess) destroyInner(pooled)
         }
     }
 
@@ -305,7 +283,7 @@ class ConnectionPool(
 
                     if (alive) idlePool.trySend(conn)
                     else {
-                        destroy(conn)
+                        destroyInner(conn)
                         if (totalConns.get() < configuration.minSize) replenish()
                     }
                 }
@@ -330,7 +308,7 @@ class ConnectionPool(
 
             for (conn in toInspect) {
                 val idleMs = now - conn.acquiredAt
-                if (idleMs >= maxIdleMs && totalConns.get() > configuration.minSize) destroy(conn)
+                if (idleMs >= maxIdleMs && totalConns.get() > configuration.minSize) destroyInner(conn)
                 else idlePool.trySend(conn)
             }
         }
