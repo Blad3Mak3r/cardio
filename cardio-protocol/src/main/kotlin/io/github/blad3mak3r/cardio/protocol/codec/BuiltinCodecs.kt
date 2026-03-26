@@ -76,7 +76,7 @@ object ByteArrayCodec : TypeCodec<ByteArray> {
 
 // kotlin.uuid.Uuid ↔ 16 bytes big-endian — no java.util.UUID
 @OptIn(ExperimentalUuidApi::class)
-object UuidCodec : TypeCodec<kotlin.uuid.Uuid> {
+object KotlinUuidCodec : TypeCodec<kotlin.uuid.Uuid> {
     override val oid = PgOid.UUID
     override fun encode(value: kotlin.uuid.Uuid): ByteArray {
         return value.toLongs { msb, lsb ->
@@ -90,6 +90,18 @@ object UuidCodec : TypeCodec<kotlin.uuid.Uuid> {
         return kotlin.uuid.Uuid.fromLongs(msb, lsb)
     }
 }
+
+object JavaUuidCodec : TypeCodec<java.util.UUID> {
+    override val oid = PgOid.UUID
+    override fun encode(value: java.util.UUID): ByteArray {
+        return Int8Codec.encode(value.mostSignificantBits) + Int8Codec.encode(value.leastSignificantBits)
+    }
+    override fun decode(bytes: ByteArray?): java.util.UUID? {
+        if (bytes == null || bytes.size != 16) return null
+        val msb = Int8Codec.decode(bytes.copyOfRange(0, 8))!!
+        val lsb = Int8Codec.decode(bytes.copyOfRange(8, 16))!!
+        return java.util.UUID(msb, lsb)
+    }}
 
 // java.time.Instant ↔ TIMESTAMPTZ
 // Postgres epoch: microseconds since 2000-01-01 00:00:00 UTC

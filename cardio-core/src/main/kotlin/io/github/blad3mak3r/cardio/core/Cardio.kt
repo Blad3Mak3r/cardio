@@ -26,10 +26,10 @@ open class Cardio internal constructor(
         var acquireTimeout: Duration = 30.seconds
         var idleTimeout: Duration    = 600.seconds
 
-        private var registry: TypeCodecRegistry = TypeCodecRegistry.default()
+        private var registry: TypeCodecRegistry = TypeCodecRegistry.Default
 
         fun codecs(block: TypeCodecRegistry.() -> Unit) {
-            registry = TypeCodecRegistry.default().apply(block)
+            registry = TypeCodecRegistry.Default.apply(block)
         }
 
         fun buildPoolConfig() = ConnectionPool.Configuration(
