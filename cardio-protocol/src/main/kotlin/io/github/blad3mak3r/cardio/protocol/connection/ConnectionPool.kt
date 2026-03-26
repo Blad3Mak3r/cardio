@@ -39,30 +39,8 @@ class ConnectionPool(
         val registry: TypeCodecRegistry = TypeCodecRegistry.Default,
     )
 
-    class PooledConnection internal constructor(
-        internal val inner: Connection,
-        private val pool: ConnectionPool
-    ) {
-        internal val acquiredAt: Long = System.currentTimeMillis()
-
-        suspend fun <T> query(
-            sql: String,
-            vararg params: Param<*>,
-            mapper: (Row) -> T
-        ) = inner.query(sql, *params, mapper = mapper)
-
-        suspend fun execute(
-            sql: String,
-            vararg params: Param<*>
-        ) = inner.execute(sql, *params)
-
-        suspend fun beginTransaction()    = inner.beginTransaction()
-        suspend fun commitTransaction()   = inner.commitTransaction()
-        suspend fun rollbackTransaction() = inner.rollbackTransaction()
-
-        val isReady:  Boolean get() = inner.isReady
-        val isFailed: Boolean get() = inner.isFailed
-    }
+    /** Pairs a connection with the timestamp at which it was placed into the idle pool. */
+    private data class IdleEntry(val conn: Connection, val idleSince: Long)
 
     data class Stats(
         val totalConnections:  Int,
@@ -86,7 +64,7 @@ class ConnectionPool(
 
     private val semaphore = Semaphore(configuration.maxSize)
 
-    private val idlePool = Channel<PooledConnection>(capacity = configuration.maxSize)
+    private val idlePool = Channel<IdleEntry>(capacity = configuration.maxSize)
 
     @Volatile private var closed = false
 
@@ -96,7 +74,7 @@ class ConnectionPool(
             return Stats(
                 totalConnections  = totalConns.get(),
                 activeConnections = activeConnections,
-                idleConnections   = totalConns.get() - (activeConnections),
+                idleConnections   = totalConns.get() - activeConnections,
                 pendingAcquires   = pendingAcquires.get(),
                 totalAcquired     = totalAcquired.get(),
                 totalReleased     = totalReleased.get(),
@@ -112,7 +90,7 @@ class ConnectionPool(
         scope.launch { runIdleReaper() }
     }
 
-    suspend fun <T> use(block: suspend (PooledConnection) -> T): T {
+    suspend fun <T> use(block: suspend (Connection) -> T): T {
         check(!closed) { "Connection pool is closed" }
         pendingAcquires.incrementAndGet()
         return try {
@@ -135,7 +113,7 @@ class ConnectionPool(
         }
     }
 
-    suspend fun <T> transaction(block: suspend (PooledConnection) -> T): T = use { conn ->
+    suspend fun <T> transaction(block: suspend (Connection) -> T): T = use { conn ->
         conn.beginTransaction()
         try {
             val result = block(conn)
@@ -166,29 +144,29 @@ class ConnectionPool(
         closed = true
         scope.cancel()
         idlePool.close()
-        for (conn in idlePool) {
-            runCatching { conn.inner.close() }
+        for (entry in idlePool) {
+            runCatching { entry.conn.close() }
             totalConns.decrementAndGet()
             totalDestroyed.incrementAndGet()
         }
     }
 
-    private suspend fun getOrCreate(): PooledConnection {
+    private suspend fun getOrCreate(): Connection {
         // 1. Reuse idle connection if it exists and is healthy
         val idle = idlePool.tryReceive().getOrNull()
         if (idle != null) {
-            if (idle.isReady) {
+            if (idle.conn.isReady) {
                 totalAcquired.incrementAndGet()
-                return PooledConnection(idle.inner, this)
+                return idle.conn
             }
             // Dead idle connection — destroy and create a new one
-            destroyQuietly(idle)
+            destroyQuietly(idle.conn)
         }
         // 2. Create new
         return createConnection()
     }
 
-    private suspend fun createConnection(): PooledConnection {
+    private suspend fun createConnection(): Connection {
         var lastEx: Exception? = null
         repeat(configuration.maxReconnectAttempts) { attempt ->
             try {
@@ -196,7 +174,7 @@ class ConnectionPool(
                 totalConns.incrementAndGet()
                 totalCreated.incrementAndGet()
                 totalAcquired.incrementAndGet()
-                return PooledConnection(conn, this)
+                return conn
             } catch (e: Exception) {
                 lastEx = e
                 if (attempt < configuration.maxReconnectAttempts - 1) {
@@ -212,21 +190,21 @@ class ConnectionPool(
     }
 
     /** Returns `conn` to the idle pool, or destroys it if the pool is closed/full. Never touches the semaphore. */
-    private suspend fun returnToPool(conn: PooledConnection) {
+    private suspend fun returnToPool(conn: Connection) {
         totalReleased.incrementAndGet()
         if (closed || conn.isFailed) {
             destroyInner(conn)
             return
         }
         // Try to return to the idle channel; if full, destroy
-        if (!idlePool.trySend(conn).isSuccess) {
+        if (!idlePool.trySend(IdleEntry(conn, System.currentTimeMillis())).isSuccess) {
             destroyInner(conn)
         }
     }
 
     /** Closes the underlying connection and updates counters. Never touches the semaphore. */
-    private suspend fun destroyInner(conn: PooledConnection) {
-        runCatching { conn.inner.close() }
+    private suspend fun destroyInner(conn: Connection) {
+        runCatching { conn.close() }
         totalConns.decrementAndGet()
         totalDestroyed.incrementAndGet()
         // Replenish if we fall below minSize
@@ -235,7 +213,7 @@ class ConnectionPool(
         }
     }
 
-    private fun destroyQuietly(conn: PooledConnection) {
+    private fun destroyQuietly(conn: Connection) {
         scope.launch { destroyInner(conn) }
     }
 
@@ -243,11 +221,10 @@ class ConnectionPool(
         (0 until configuration.minSize).map {
             scope.async {
                 runCatching {
-                    val conn   = Connection.connect(configuration.connect, configuration.registry)
-                    val pooled = PooledConnection(conn, this@ConnectionPool)
+                    val conn = Connection.connect(configuration.connect, configuration.registry)
                     totalConns.incrementAndGet()
                     totalCreated.incrementAndGet()
-                    idlePool.trySend(pooled)
+                    idlePool.trySend(IdleEntry(conn, System.currentTimeMillis()))
                 }
             }
         }.awaitAll()
@@ -256,11 +233,10 @@ class ConnectionPool(
     private suspend fun replenish() {
         if (totalConns.get() >= configuration.minSize) return
         runCatching {
-            val conn   = Connection.connect(configuration.connect, configuration.registry)
-            val pooled = PooledConnection(conn, this)
+            val conn = Connection.connect(configuration.connect, configuration.registry)
             totalConns.incrementAndGet()
             totalCreated.incrementAndGet()
-            if (!idlePool.trySend(pooled).isSuccess) destroyInner(pooled)
+            if (!idlePool.trySend(IdleEntry(conn, System.currentTimeMillis())).isSuccess) destroyInner(conn)
         }
     }
 
@@ -274,16 +250,16 @@ class ConnectionPool(
                 while (true) add(idlePool.tryReceive().getOrNull() ?: break)
             }
 
-            toCheck.map { conn ->
+            toCheck.map { entry ->
                 scope.async {
                     val alive = runCatching {
-                        conn.query("SELECT 1") { }
+                        entry.conn.query("SELECT 1") { }
                         true
                     }.getOrDefault(false)
 
-                    if (alive) idlePool.trySend(conn)
+                    if (alive) idlePool.trySend(entry)
                     else {
-                        destroyInner(conn)
+                        destroyInner(entry.conn)
                         if (totalConns.get() < configuration.minSize) replenish()
                     }
                 }
@@ -306,10 +282,10 @@ class ConnectionPool(
                 }
             }
 
-            for (conn in toInspect) {
-                val idleMs = now - conn.acquiredAt
-                if (idleMs >= maxIdleMs && totalConns.get() > configuration.minSize) destroyInner(conn)
-                else idlePool.trySend(conn)
+            for (entry in toInspect) {
+                val idleMs = now - entry.idleSince
+                if (idleMs >= maxIdleMs && totalConns.get() > configuration.minSize) destroyInner(entry.conn)
+                else idlePool.trySend(entry)
             }
         }
     }

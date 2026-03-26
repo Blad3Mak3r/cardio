@@ -2,10 +2,10 @@ package io.github.blad3mak3r.cardio.core
 
 import io.github.blad3mak3r.cardio.protocol.Row
 import io.github.blad3mak3r.cardio.protocol.codec.Param
-import io.github.blad3mak3r.cardio.protocol.connection.ConnectionPool
+import io.github.blad3mak3r.cardio.protocol.connection.Connection
 
 class CardioTransaction internal constructor(
-    private val conn: ConnectionPool.PooledConnection,
+    private val conn: Connection,
 ) {
     suspend fun <T> query(
         sql: String,
