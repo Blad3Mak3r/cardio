@@ -1,7 +1,6 @@
 package io.github.blad3mak3r.cardio.core
 
 import io.github.blad3mak3r.cardio.protocol.Row
-import io.github.blad3mak3r.cardio.protocol.codec.Param
 import io.github.blad3mak3r.cardio.protocol.codec.TypeCodecRegistry
 import io.github.blad3mak3r.cardio.protocol.connection.Connection
 import io.github.blad3mak3r.cardio.protocol.connection.ConnectionPool
@@ -57,19 +56,19 @@ open class Cardio internal constructor(
 
     suspend fun <T> query(
         sql: String,
-        vararg params: Param<*>,
+        vararg params: Any?,
         mapper: (Row) -> T
     ) = pool.query(sql = sql, params = params, mapper = mapper)
 
     suspend fun <T> queryOne(
         sql: String,
-        vararg params: Param<*>,
+        vararg params: Any?,
         mapper: (Row) -> T,
     ): T? = query(sql, *params, mapper = mapper).firstOrNull()
 
     suspend fun execute(
         sql: String,
-        vararg params: Param<*>,
+        vararg params: Any?,
     ) = pool.execute(sql = sql, params = params)
 
     suspend fun <T> inTransaction(block: suspend (CardioTransaction) -> T): T =

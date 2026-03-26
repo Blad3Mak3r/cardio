@@ -1,7 +1,6 @@
 package io.github.blad3mak3r.cardio.protocol.connection
 
 import io.github.blad3mak3r.cardio.protocol.Row
-import io.github.blad3mak3r.cardio.protocol.codec.Param
 import io.github.blad3mak3r.cardio.protocol.codec.TypeCodecRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -128,14 +127,14 @@ class ConnectionPool(
     /** Shortcut: query without explicit transaction. */
     suspend fun <T> query(
         sql: String,
-        vararg params: Param<*>,
+        vararg params: Any?,
         mapper: (Row) -> T,
     ): List<T> = use { it.query(sql, *params, mapper = mapper) }
 
     /** Shortcut: execute without explicit transaction. */
     suspend fun execute(
         sql: String,
-        vararg params: Param<*>,
+        vararg params: Any?,
     ): Long = use { it.execute(sql, *params) }
 
     /** Closes all connections and stops background tasks. */

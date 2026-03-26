@@ -1,5 +1,6 @@
 package io.github.blad3mak3r.cardio.protocol.connection
 
+import io.github.blad3mak3r.cardio.protocol.DatabaseOperations
 import io.github.blad3mak3r.cardio.protocol.DescribeTarget
 import io.github.blad3mak3r.cardio.protocol.PgException
 import io.github.blad3mak3r.cardio.protocol.PgMessage
@@ -8,8 +9,8 @@ import io.github.blad3mak3r.cardio.protocol.PgMessageWriter
 import io.github.blad3mak3r.cardio.protocol.ResultFormat
 import io.github.blad3mak3r.cardio.protocol.Row
 import io.github.blad3mak3r.cardio.protocol.TransactionStatus
-import io.github.blad3mak3r.cardio.protocol.codec.Param
 import io.github.blad3mak3r.cardio.protocol.codec.TypeCodecRegistry
+import io.github.blad3mak3r.cardio.protocol.codec.toParam
 import io.ktor.network.selector.SelectorManager
 import io.ktor.network.sockets.Socket
 import io.ktor.network.sockets.aSocket
@@ -37,7 +38,7 @@ class Connection private constructor(
     private val readChannel: ByteReadChannel,
     private val writeChannel: ByteWriteChannel,
     internal val registry: TypeCodecRegistry
-){
+) : DatabaseOperations {
     enum class SslMode { DISABLE, PREFER, REQUIRE}
 
     data class Configuration(
@@ -80,9 +81,9 @@ class Connection private constructor(
     val isFailed: Boolean
         get() = state is State.Failed
 
-    suspend fun <T> query(
+    override suspend fun <T> query(
         sql: String,
-        vararg params: Param<*>,
+        vararg params: Any?,
         mapper: (Row) -> T
     ): List<T> = mutex.withLock {
         check(state == State.Ready) {
@@ -105,9 +106,9 @@ class Connection private constructor(
         }
     }
 
-    suspend fun execute(
+    override suspend fun execute(
         sql: String,
-        vararg param: Param<*>
+        vararg params: Any?
     ): Long = mutex.withLock {
         check(state == State.Ready || state == State.InTransaction) {
             "Connection not ready (state=$state)"
@@ -117,7 +118,7 @@ class Connection private constructor(
         state = State.InQuery
 
         try {
-            executeCommand(sql, param)
+            executeCommand(sql, params)
         } catch (e: PgException) {
             state = prev
             throw e
@@ -158,7 +159,7 @@ class Connection private constructor(
 
     private suspend fun <T> executeQuery(
         sql: String,
-        params: Array<out Param<*>>,
+        params: Array<out Any?>,
         mapper: (Row) -> T
     ): List<T> {
         sendExtendedQuery(sql, params)
@@ -197,7 +198,7 @@ class Connection private constructor(
 
     private suspend fun executeCommand(
         sql: String,
-        params: Array<out Param<*>>,
+        params: Array<out Any?>,
     ): Long {
         sendExtendedQuery(sql, params)
 
@@ -227,9 +228,10 @@ class Connection private constructor(
     }
 
     // Parse + Bind + Describe(Portal) + Execute + Sync en un solo flush
-    private suspend fun sendExtendedQuery(sql: String, params: Array<out Param<*>>) {
-        val encoded   = params.map { it.encode() }
-        val paramOids = params.map { it.oid }
+    private suspend fun sendExtendedQuery(sql: String, params: Array<out Any?>) {
+        val resolved  = params.map { it.toParam() }
+        val encoded   = resolved.map { it.encode() }
+        val paramOids = resolved.map { it.oid }
 
         val bytes = PgMessageWriter.encode(PgMessage.Parse(sql = sql, paramTypeOids = paramOids)) +
                 PgMessageWriter.encode(PgMessage.Bind(params = encoded, resultFormat = ResultFormat.BINARY)) +
