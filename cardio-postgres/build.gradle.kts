@@ -6,7 +6,6 @@
  */
 
 plugins {
-    // Apply the org.jetbrains.kotlin.jvm Plugin to add support for Kotlin.
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.maven.publish)
 
@@ -37,50 +36,12 @@ dependencies {
     implementation(libs.slf4j.api)
 }
 
-// Apply a specific Java toolchain to ease working on different environments.
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
 
 tasks.named<Test>("test") {
     // Use JUnit Platform for unit tests.
     useJUnitPlatform()
 }
 
-mavenPublishing {
-    coordinates("io.github.blad3mak3r.cardio", "cardio-postgres", "$version")
-
-    pom {
-        name.set("cardio-postgres")
-        description.set("A lightweight Kotlin library designed to simplify interaction with PostgreSQL databases using R2DBC reactively and with coroutines.")
-        url.set("https://github.com/Blad3Mak3r/cardio")
-        issueManagement {
-            system.set("GitHub")
-            url.set("https://github.com/Blad3Mak3r/cardio/issues")
-        }
-        licenses {
-            license {
-                name.set("Apache License 2.0")
-                url.set("https://github.com/Blad3Mak3r/cardio/LICENSE.txt")
-                distribution.set("repo")
-            }
-        }
-        scm {
-            url.set("https://github.com/Blad3Mak3r/cardio")
-            connection.set("https://github.com/Blad3Mak3r/cardio.git")
-            developerConnection.set("scm:git:ssh://git@github.com:Blad3Mak3r/cardio.git")
-        }
-        developers {
-            developer {
-                name.set("Juan Luis Caro")
-                url.set("https://github.com/Blad3Mak3r")
-            }
-        }
-    }
-
-    publishToMavenCentral(automaticRelease = true)
-
-    signAllPublications()
+kotlin {
+    jvmToolchain(21)
 }

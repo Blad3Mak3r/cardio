@@ -2,17 +2,11 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
 }
 
-repositories {
-    mavenCentral()
-}
-
 dependencies {
     api(libs.coroutines.core)
     api(libs.ktor.network)
 }
 
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
+kotlin {
+    jvmToolchain(21)
 }
