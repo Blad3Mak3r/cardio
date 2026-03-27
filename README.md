@@ -8,6 +8,25 @@ Cardio is a lightweight Kotlin library for non-blocking PostgreSQL access using 
 
 ---
 
+## Features
+
+- 🔌 **Custom PostgreSQL wire protocol** — implements PG protocol 3.0 directly over Ktor TCP sockets, no Vert.x, no JDBC, no R2DBC or Reactor required.
+- ⚡ **Pure coroutine-native** — every operation is a suspending function; no `Future`, no `Mono`, no callback adapters.
+- 🔒 **SCRAM-SHA-256 & MD5 authentication** — modern secure auth out of the box.
+- 📦 **Binary wire encoding** — all supported types are sent and received in binary format, not as text strings.
+- 🔁 **Coroutine-based connection pool** — built on `Semaphore` + `Channel` from `kotlinx.coroutines`, no external pool library.
+- 🧩 **Pluggable type codecs** — implement `TypeCodec<T>` to teach Cardio any custom or user-defined PostgreSQL type.
+- 🗃️ **Built-in codecs** — `Int2/4/8`, `Float4/8`, `Text`, `Bool`, `ByteArray`, `UUID`, `Instant`, `LocalDate`, `JSONB` out of the box.
+- 📊 **Pool observability** — `db.stats` exposes live counters (active/idle connections, total acquired, errors).
+- 🧾 **kotlinx.serialization bridge** — deserialize a `Row` into a `@Serializable` data class in one line via `cardio-serialization`.
+- 🏛️ **Repository pattern** — extend `CardioRepository` to encapsulate all data-access logic cleanly.
+- 🔀 **Transaction support** — first-class `inTransaction` with automatic rollback on failure.
+- 🪶 **Minimal footprint** — runtime dependencies are only `ktor-network` and `kotlinx-coroutines-core`.
+- 🔑 **SSL support** — configurable SSL mode (`DISABLE`, `PREFER`, `REQUIRE`).
+- 📝 **Raw SQL** — plain PostgreSQL with native positional parameters (`$1`, `$2`, …); no ORM magic, no DSL.
+
+---
+
 ## How it works
 
 Cardio is built in layers:
