@@ -7,7 +7,7 @@ import io.github.blad3mak3r.cardio.protocol.connection.ConnectionPool
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-open class Cardio internal constructor(
+open class Cardio(
     private val pool: ConnectionPool
 ) {
 
