@@ -83,6 +83,14 @@ class ConnectionPool(
     /** Tracks connections that are currently inside a `use {}` block, for clean shutdown. */
     private val activeConnections: MutableSet<Connection> = ConcurrentHashMap.newKeySet()
 
+    /**
+     * Tracks ALL live connections regardless of state (idle, active, or being processed by
+     * background tasks). This is the authoritative set used by [close] to ensure nothing is
+     * leaked when the scope is cancelled while the health-check or idle-reaper hold connections
+     * outside of [idlePool].
+     */
+    private val allConnections: MutableSet<Connection> = ConcurrentHashMap.newKeySet()
+
     val stats: Stats
         get() {
             val total  = totalConns.get()
@@ -168,19 +176,18 @@ class ConnectionPool(
         if (!closed.compareAndSet(false, true)) return
         scope.cancel()
         idlePool.close()
-        // Drain and close idle connections
-        for (entry in idlePool) {
-            runCatching { entry.conn.close() }
-            totalConns.decrementAndGet()
-            totalDestroyed.incrementAndGet()
-        }
-        // Close connections that are currently in-flight inside a use {} block
-        for (conn in activeConnections) {
+        // Snapshot allConnections — this covers idle entries still in the channel,
+        // connections currently inside a use {} block, AND connections that were
+        // pulled out of idlePool by the health-check or idle-reaper coroutines
+        // and would be leaked if we only drained the channel + activeConnections.
+        val snapshot = allConnections.toSet()
+        allConnections.clear()
+        activeConnections.clear()
+        for (conn in snapshot) {
             runCatching { conn.close() }
             totalConns.decrementAndGet()
             totalDestroyed.incrementAndGet()
         }
-        activeConnections.clear()
     }
 
     private suspend fun getOrCreate(): Connection {
@@ -206,6 +213,7 @@ class ConnectionPool(
         repeat(configuration.maxReconnectAttempts) { attempt ->
             try {
                 val conn = Connection.connect(configuration.connect, configuration.registry)
+                allConnections += conn
                 totalConns.incrementAndGet()
                 totalCreated.incrementAndGet()
                 totalAcquired.incrementAndGet()
@@ -241,6 +249,7 @@ class ConnectionPool(
     /** Closes the underlying connection and updates counters. Never touches the semaphore. */
     private suspend fun destroyInner(conn: Connection) {
         runCatching { conn.close() }
+        allConnections -= conn
         totalConns.decrementAndGet()
         totalDestroyed.incrementAndGet()
         // Replenish if we fall below minSize
@@ -258,6 +267,7 @@ class ConnectionPool(
             scope.async {
                 runCatching {
                     val conn = Connection.connect(configuration.connect, configuration.registry)
+                    allConnections += conn
                     totalConns.incrementAndGet()
                     totalCreated.incrementAndGet()
                     if (!idlePool.trySend(IdleEntry(conn, System.currentTimeMillis())).isSuccess) {
@@ -272,6 +282,7 @@ class ConnectionPool(
         if (totalConns.get() >= configuration.minSize) return
         runCatching {
             val conn = Connection.connect(configuration.connect, configuration.registry)
+            allConnections += conn
             totalConns.incrementAndGet()
             totalCreated.incrementAndGet()
             if (!idlePool.trySend(IdleEntry(conn, System.currentTimeMillis())).isSuccess) destroyInner(conn)
