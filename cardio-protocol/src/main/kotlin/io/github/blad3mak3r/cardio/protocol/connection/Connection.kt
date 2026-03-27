@@ -86,22 +86,25 @@ class Connection private constructor(
         vararg params: Any?,
         mapper: (Row) -> T
     ): List<T> = mutex.withLock {
-        check(state == State.Ready) {
+        check(state == State.Ready || state == State.InTransaction) {
             "Connection is not ready for queries (state = ${state})"
         }
 
+        val prev = state
         state = State.InQuery
         try {
             executeQuery(sql, params, mapper)
         } catch (e: PgException) {
-            state = State.Ready
+            // drainUntilReady() already called updateTransactionState; restore prev as safety net
+            state = prev
             throw e
         } catch (e: Throwable) {
             state = State.Failed(e)
             throw e
         } finally {
+            // Fallback: if updateTransactionState wasn't reached, restore the pre-query state
             if (state == State.InQuery) {
-                state = State.Ready
+                state = prev
             }
         }
     }
@@ -148,9 +151,12 @@ class Connection private constructor(
     }
 
     suspend fun close() {
-        if (state == State.Closing) return
-
-        state = State.Closing
+        val alreadyClosing = mutex.withLock {
+            if (state == State.Closing) return@withLock true
+            state = State.Closing
+            false
+        }
+        if (alreadyClosing) return
 
         runCatching { PgMessageWriter.write(writeChannel, PgMessage.Terminate) }
         runCatching { socket.close() }

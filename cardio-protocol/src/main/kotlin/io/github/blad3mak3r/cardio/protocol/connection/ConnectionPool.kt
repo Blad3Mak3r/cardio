@@ -15,6 +15,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeout
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.Duration
@@ -36,7 +38,13 @@ class ConnectionPool(
         val maxReconnectAttempts: Int = 5,
         val reconnectBackoff: Duration = 500.milliseconds,
         val registry: TypeCodecRegistry = TypeCodecRegistry.Default,
-    )
+    ) {
+        init {
+            require(maxSize > 0) { "maxSize must be > 0" }
+            require(minSize >= 0) { "minSize must be >= 0" }
+            require(minSize <= maxSize) { "minSize ($minSize) must be <= maxSize ($maxSize)" }
+        }
+    }
 
     /** Pairs a connection with the timestamp at which it was placed into the idle pool. */
     private data class IdleEntry(val conn: Connection, val idleSince: Long)
@@ -65,15 +73,19 @@ class ConnectionPool(
 
     private val idlePool = Channel<IdleEntry>(capacity = configuration.maxSize)
 
-    @Volatile private var closed = false
+    private val closed = AtomicBoolean(false)
+
+    /** Tracks connections that are currently inside a `use {}` block, for clean shutdown. */
+    private val activeConnections: MutableSet<Connection> = ConcurrentHashMap.newKeySet()
 
     val stats: Stats
         get() {
-            val activeConnections = configuration.maxSize - semaphore.availablePermits
+            val total  = totalConns.get()
+            val active = configuration.maxSize - semaphore.availablePermits
             return Stats(
-                totalConnections  = totalConns.get(),
-                activeConnections = activeConnections,
-                idleConnections   = totalConns.get() - activeConnections,
+                totalConnections  = total,
+                activeConnections = active,
+                idleConnections   = maxOf(0, total - active),
                 pendingAcquires   = pendingAcquires.get(),
                 totalAcquired     = totalAcquired.get(),
                 totalReleased     = totalReleased.get(),
@@ -90,7 +102,7 @@ class ConnectionPool(
     }
 
     suspend fun <T> use(block: suspend (Connection) -> T): T {
-        check(!closed) { "Connection pool is closed" }
+        check(!closed.get()) { "Connection pool is closed" }
         pendingAcquires.incrementAndGet()
         return try {
             withTimeout(configuration.acquireTimeout) {
@@ -139,30 +151,40 @@ class ConnectionPool(
 
     /** Closes all connections and stops background tasks. */
     suspend fun close() {
-        if (closed) return
-        closed = true
+        if (!closed.compareAndSet(false, true)) return
         scope.cancel()
         idlePool.close()
+        // Drain and close idle connections
         for (entry in idlePool) {
             runCatching { entry.conn.close() }
             totalConns.decrementAndGet()
             totalDestroyed.incrementAndGet()
         }
+        // Close connections that are currently in-flight inside a use {} block
+        for (conn in activeConnections) {
+            runCatching { conn.close() }
+            totalConns.decrementAndGet()
+            totalDestroyed.incrementAndGet()
+        }
+        activeConnections.clear()
     }
 
     private suspend fun getOrCreate(): Connection {
-        // 1. Reuse idle connection if it exists and is healthy
-        val idle = idlePool.tryReceive().getOrNull()
-        if (idle != null) {
+        // 1. Reuse idle connections — loop to skip over any dead entries
+        while (true) {
+            val idle = idlePool.tryReceive().getOrNull() ?: break
             if (idle.conn.isReady) {
+                activeConnections += idle.conn
                 totalAcquired.incrementAndGet()
                 return idle.conn
             }
-            // Dead idle connection — destroy and create a new one
+            // Dead idle connection — destroy it and try the next one
             destroyQuietly(idle.conn)
         }
-        // 2. Create new
-        return createConnection()
+        // 2. No healthy idle connection found — create a new one
+        val conn = createConnection()
+        activeConnections += conn
+        return conn
     }
 
     private suspend fun createConnection(): Connection {
@@ -190,8 +212,9 @@ class ConnectionPool(
 
     /** Returns `conn` to the idle pool, or destroys it if the pool is closed/full. Never touches the semaphore. */
     private suspend fun returnToPool(conn: Connection) {
+        activeConnections -= conn
         totalReleased.incrementAndGet()
-        if (closed || conn.isFailed) {
+        if (closed.get() || conn.isFailed) {
             destroyInner(conn)
             return
         }
@@ -207,7 +230,7 @@ class ConnectionPool(
         totalConns.decrementAndGet()
         totalDestroyed.incrementAndGet()
         // Replenish if we fall below minSize
-        if (totalConns.get() < configuration.minSize && !closed) {
+        if (totalConns.get() < configuration.minSize && !closed.get()) {
             scope.launch { replenish() }
         }
     }
@@ -223,7 +246,9 @@ class ConnectionPool(
                     val conn = Connection.connect(configuration.connect, configuration.registry)
                     totalConns.incrementAndGet()
                     totalCreated.incrementAndGet()
-                    idlePool.trySend(IdleEntry(conn, System.currentTimeMillis()))
+                    if (!idlePool.trySend(IdleEntry(conn, System.currentTimeMillis())).isSuccess) {
+                        destroyInner(conn)
+                    }
                 }
             }
         }.awaitAll()
@@ -241,9 +266,9 @@ class ConnectionPool(
 
     /** Checks each idle connection and discards dead ones. */
     private suspend fun runHealthCheck() {
-        while (!closed) {
+        while (!closed.get()) {
             delay(configuration.healthCheckInterval)
-            if (closed) break
+            if (closed.get()) break
 
             val toCheck = buildList {
                 while (true) add(idlePool.tryReceive().getOrNull() ?: break)
@@ -256,8 +281,10 @@ class ConnectionPool(
                         true
                     }.getOrDefault(false)
 
-                    if (alive) idlePool.trySend(entry)
-                    else {
+                    if (alive) {
+                        // Return to pool; destroy if it no longer fits (pool resized / closed)
+                        if (!idlePool.trySend(entry).isSuccess) destroyInner(entry.conn)
+                    } else {
                         destroyInner(entry.conn)
                         if (totalConns.get() < configuration.minSize) replenish()
                     }
@@ -268,23 +295,26 @@ class ConnectionPool(
 
     /** Closes idle connections that have been unused for too long. */
     private suspend fun runIdleReaper() {
-        while (!closed) {
+        while (!closed.get()) {
             delay(configuration.idleTimeout / 2)
-            if (closed || totalConns.get() <= configuration.minSize) continue
+            if (closed.get() || totalConns.get() <= configuration.minSize) continue
 
             val now       = System.currentTimeMillis()
             val maxIdleMs = configuration.idleTimeout.inWholeMilliseconds
 
+            // Drain the entire idle pool for inspection
             val toInspect = buildList {
-                while (totalConns.get() > configuration.minSize) {
-                    add(idlePool.tryReceive().getOrNull() ?: break)
-                }
+                while (true) add(idlePool.tryReceive().getOrNull() ?: break)
             }
 
             for (entry in toInspect) {
                 val idleMs = now - entry.idleSince
-                if (idleMs >= maxIdleMs && totalConns.get() > configuration.minSize) destroyInner(entry.conn)
-                else idlePool.trySend(entry)
+                if (idleMs >= maxIdleMs && totalConns.get() > configuration.minSize) {
+                    destroyInner(entry.conn)
+                } else {
+                    // Return to pool; destroy if channel is full to avoid leaking
+                    if (!idlePool.trySend(entry).isSuccess) destroyInner(entry.conn)
+                }
             }
         }
     }
