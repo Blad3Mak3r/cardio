@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeout
+import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -27,6 +28,10 @@ class ConnectionPool(
     private val configuration: Configuration,
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 ) {
+    companion object {
+        private val logger = LoggerFactory.getLogger("ConnectionPool")
+    }
+
     data class Configuration(
         val connect: Connection.Configuration,
 
@@ -154,8 +159,8 @@ class ConnectionPool(
      * releasing a connection. Throws [PgConnectionCreationException] (or the underlying cause)
      * if the database is unreachable or credentials are wrong.
      */
-    suspend fun probe() {
-        use { it.query("SELECT version()") { } }
+    suspend fun probe() = query("SELECT version()") { it.get<String>(0) }.let {
+        logger.info("Successfully connected to PostgreSQL version: $it")
     }
 
     /** Closes all connections and stops background tasks. */
