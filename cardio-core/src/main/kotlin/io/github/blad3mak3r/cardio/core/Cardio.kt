@@ -93,11 +93,11 @@ open class Cardio(
          * Si prefieres zero-reflection absoluto, usa [create] y pasa la
          * instancia manualmente al constructor de tu subclase.
          */
-        suspend inline fun <reified T : Cardio> newCustom(noinline block: Configuration.() -> Unit): T {
+        suspend inline fun <reified C : Cardio> newCustom(noinline block: Configuration.() -> Unit): C {
             val config = Configuration().apply(block)
             val pool   = ConnectionPool(config.buildPoolConfig())
             pool.probe()
-            return T::class.java
+            return C::class.java
                 .getDeclaredConstructor(ConnectionPool::class.java)
                 .newInstance(pool)
         }

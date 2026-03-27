@@ -3,7 +3,7 @@ package io.github.blad3mak3r.cardio.core
 import io.github.blad3mak3r.cardio.protocol.DatabaseOperations
 import io.github.blad3mak3r.cardio.protocol.Row
 
-abstract class CardioRepository<T : Cardio>(protected val db: T) : DatabaseOperations {
+abstract class CardioRepository<C : Cardio>(protected val db: C) : DatabaseOperations {
 
     override suspend fun <T> query(
         sql: String,
