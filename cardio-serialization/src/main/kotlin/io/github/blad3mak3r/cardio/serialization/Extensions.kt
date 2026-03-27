@@ -35,13 +35,13 @@ suspend inline fun <reified T> CardioTransaction.queryOne(
 suspend inline fun <reified T> CardioRepository<*>.query(
     sql: String,
     vararg params: Any?,
-) = query(sql, *params) { row ->
+) = this.query(sql = sql, params = params) { row ->
     CardioSerializationFormat.decodeFromRow<T>(row)
 }
 
 suspend inline fun <reified T> CardioRepository<*>.queryOne(
     sql: String,
     vararg params: Any?,
-) = queryOne(sql, *params) { row ->
+) = this.queryOne(sql = sql, params = params) { row ->
     CardioSerializationFormat.decodeFromRow<T>(row)
 }
