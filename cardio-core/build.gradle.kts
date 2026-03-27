@@ -10,6 +10,8 @@ dependencies {
 
     api(libs.coroutines.core)
     api(project(":cardio-protocol"))
+
+    implementation(libs.slf4j.api)
 }
 
 kotlin {

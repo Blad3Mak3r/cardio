@@ -8,6 +8,8 @@ plugins {
 
 dependencies {
     implementation(project(":cardio-core"))
+
+    implementation(libs.slf4j.api)
 }
 
 kotlin {

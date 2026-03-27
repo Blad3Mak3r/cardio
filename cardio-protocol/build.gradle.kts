@@ -8,6 +8,8 @@ plugins {
 dependencies {
     api(libs.coroutines.core)
     api(libs.ktor.network)
+
+    implementation(libs.slf4j.api)
 }
 
 kotlin {
