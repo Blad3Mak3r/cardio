@@ -17,6 +17,7 @@ Cardio is a lightweight Kotlin library for non-blocking PostgreSQL access using 
 - 🔁 **Coroutine-based connection pool** — built on `Semaphore` + `Channel` from `kotlinx.coroutines`, no external pool library.
 - 🧩 **Pluggable type codecs** — implement `TypeCodec<T>` to teach Cardio any custom or user-defined PostgreSQL type.
 - 🗃️ **Built-in codecs** — `Int2/4/8`, `Float4/8`, `Text`, `Bool`, `ByteArray`, `UUID`, `Instant`, `LocalDate`, `JSONB` out of the box.
+- 📋 **Array parameters & results** — pass any `List<T>` or Kotlin primitive array (`IntArray`, `LongArray`, …) directly as a query parameter; array columns are decoded back to `List<T>` automatically.
 - 📊 **Pool observability** — `db.stats` exposes live counters (active/idle connections, total acquired, errors).
 - 🧾 **kotlinx.serialization bridge** — deserialize a `Row` into a `@Serializable` data class in one line via `cardio-serialization`.
 - 🏛️ **Repository pattern** — extend `CardioRepository` to encapsulate all data-access logic cleanly.
@@ -61,7 +62,7 @@ cardio-protocol       ← PostgreSQL wire protocol 3.0 over Ktor TCP sockets
 **Key strengths:**
 - **No Vert.x, no Reactor** — the only runtime dependencies are `ktor-network` and `kotlinx-coroutines-core`.
 - **Truly coroutine-native** — suspending functions everywhere, no `Future`, no `Mono`, no callback adapters.
-- **Binary wire protocol** — all supported types (Int, Long, Float, Double, Boolean, UUID, Instant, LocalDate, JSONB, …) are encoded and decoded in binary, not as text strings.
+- **Binary wire protocol** — all supported types (Int, Long, Float, Double, Boolean, UUID, Instant, LocalDate, JSONB, arrays, …) are encoded and decoded in binary, not as text strings.
 - **SCRAM-SHA-256** — modern, secure authentication out of the box; MD5 also supported.
 - **Pluggable codecs** — implement `TypeCodec<T>` to teach Cardio any custom PostgreSQL type.
 - **kotlinx.serialization** — map a `Row` to a `@Serializable` class in one line.
@@ -72,7 +73,49 @@ cardio-protocol       ← PostgreSQL wire protocol 3.0 over Ktor TCP sockets
 
 ## Installation
 
-> **Note:** `cardio-core` is not yet published to Maven Central. Until it is, use the source directly or publish it to your local Maven repository with `./gradlew :cardio-core:publishToMavenLocal`.
+> Starting with **1.0.0-alpha.1**, `cardio-core`, `cardio-serialization` and `cardio-protocol` are published to Maven Central.
+> `cardio-protocol` is a transitive dependency of `cardio-core` — you only need to declare it explicitly if you use the protocol layer directly.
+
+### Gradle (Kotlin DSL)
+
+```kotlin
+dependencies {
+    // Core API — pulls in cardio-protocol automatically
+    implementation("io.github.blad3mak3r:cardio-core:1.0.0-alpha.1")
+
+    // Optional: kotlinx.serialization bridge
+    implementation("io.github.blad3mak3r:cardio-serialization:1.0.0-alpha.1")
+
+    // Only needed when using the protocol layer directly (e.g. custom codecs, ConnectionPool)
+    implementation("io.github.blad3mak3r:cardio-protocol:1.0.0-alpha.1")
+}
+```
+
+### Gradle (Groovy DSL)
+
+```groovy
+dependencies {
+    implementation 'io.github.blad3mak3r:cardio-core:1.0.0-alpha.1'
+    implementation 'io.github.blad3mak3r:cardio-serialization:1.0.0-alpha.1' // optional
+}
+```
+
+### Maven
+
+```xml
+<dependency>
+    <groupId>io.github.blad3mak3r</groupId>
+    <artifactId>cardio-core</artifactId>
+    <version>1.0.0-alpha.1</version>
+</dependency>
+
+<!-- Optional: kotlinx.serialization bridge -->
+<dependency>
+    <groupId>io.github.blad3mak3r</groupId>
+    <artifactId>cardio-serialization</artifactId>
+    <version>1.0.0-alpha.1</version>
+</dependency>
+```
 
 ---
 
@@ -154,6 +197,65 @@ val user = db.queryOne("SELECT id, name FROM users WHERE id = $1", 42) { row ->
 }
 ```
 
+### Arrays
+
+Cardio supports PostgreSQL array parameters natively, enabling SQL functions like `ANY($1)`, `unnest($1)`, `= ALL($1)`, etc.
+
+Pass a Kotlin `List<T>` or a primitive array and Cardio will encode it in the PostgreSQL binary array format automatically:
+
+```kotlin
+// ANY($1) — filter by a set of ids
+val users = db.query(
+    "SELECT id, name FROM users WHERE id = ANY($1)",
+    listOf(1, 2, 3)
+) { row -> User(row.get("id"), row.get("name")) }
+
+// unnest($1) — expand an array into rows
+val ids = db.query(
+    "SELECT * FROM unnest($1) AS id",
+    listOf(10L, 20L, 30L)
+) { row -> row.get<Long>("id") }
+
+// Kotlin primitive arrays work too
+db.execute("DELETE FROM sessions WHERE id = ANY($1)", intArrayOf(5, 6, 7))
+
+// Mixed queries — scalar and array params together
+db.query(
+    "SELECT * FROM events WHERE tenant_id = $1 AND status = ANY($2)",
+    tenantId, listOf("active", "pending")
+) { row -> /* … */ }
+```
+
+Array results (columns with an array type) are decoded back to `List<T>`:
+
+```kotlin
+val row = db.queryOne("SELECT tags FROM posts WHERE id = $1", 42) { it }
+val tags: List<String> = row.get("tags")
+```
+
+**Supported element types** for automatic codec inference:
+
+| Kotlin type | PostgreSQL array type |
+|---|---|
+| `List<Int>` / `IntArray` | `int4[]` |
+| `List<Short>` / `ShortArray` | `int2[]` |
+| `List<Long>` / `LongArray` | `int8[]` |
+| `List<Float>` / `FloatArray` | `float4[]` |
+| `List<Double>` / `DoubleArray` | `float8[]` |
+| `List<String>` | `text[]` |
+| `List<Boolean>` / `BooleanArray` | `bool[]` |
+| `List<java.util.UUID>` | `uuid[]` |
+| `List<java.time.Instant>` | `timestamptz[]` |
+
+For any other element type, supply an explicit `ArrayCodec`:
+
+```kotlin
+db.query(
+    "SELECT * FROM unnest($1) AS s",
+    Param(myEnumList, ArrayCodec(PgOid.TEXT_ARRAY, MyEnumCodec))
+) { row -> /* … */ }
+```
+
 ### Custom codecs
 
 Implement `TypeCodec<T>` for any PostgreSQL type and register it at startup:
@@ -167,7 +269,9 @@ val db = Cardio.new {
 }
 ```
 
-Built-in codecs: `Int2`, `Int4`, `Int8`, `Float4`, `Float8`, `Text`, `Bool`, `ByteArray`, `UUID` (Java + Kotlin `uuid.Uuid`), `Instant`, `LocalDate`, `JSONB`.
+Built-in scalar codecs: `Int2`, `Int4`, `Int8`, `Float4`, `Float8`, `Text`, `Bool`, `ByteArray`, `UUID` (Java + Kotlin `uuid.Uuid`), `Instant`, `LocalDate`, `JSONB`.
+
+Built-in array codecs (automatically selected when a `List<T>` or primitive array is passed): `Int2Array`, `Int4Array`, `Int8Array`, `Float4Array`, `Float8Array`, `TextArray`, `BoolArray`, `UuidArray`, `TimestamptzArray`.
 
 ### Pool statistics
 

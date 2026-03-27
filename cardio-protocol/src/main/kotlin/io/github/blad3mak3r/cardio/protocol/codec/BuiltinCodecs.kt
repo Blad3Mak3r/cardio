@@ -140,3 +140,83 @@ object JsonbCodec : TypeCodec<String> {
         return bytes.toString(Charsets.UTF_8).drop(1)
     }
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Array codec — encodes/decodes List<T> using the PostgreSQL binary array format
+//
+// Wire layout (1-D):
+//   int32  ndim          = 1
+//   int32  flags         = 0 (bit-0 would mean "contains nulls")
+//   int32  element OID
+//   int32  dim[0] length
+//   int32  dim[0] lower bound = 1
+//   For every element:
+//     int32  byte length  (-1 = SQL NULL)
+//     bytes  element data (absent when length == -1)
+// ──────────────────────────────────────────────────────────────────────────────
+class ArrayCodec<T : Any>(
+    override val oid: Int,
+    val elementCodec: TypeCodec<T>
+) : TypeCodec<List<T>> {
+
+    override fun encode(value: List<T>): ByteArray {
+        val buf = java.io.ByteArrayOutputStream()
+        val out = java.io.DataOutputStream(buf)
+
+        out.writeInt(1)                  // ndim
+        out.writeInt(0)                  // flags
+        out.writeInt(elementCodec.oid)   // element OID
+        out.writeInt(value.size)         // dimension length
+        out.writeInt(1)                  // lower bound
+
+        for (element in value) {
+            val bytes = elementCodec.encode(element)
+            out.writeInt(bytes.size)
+            out.write(bytes)
+        }
+
+        return buf.toByteArray()
+    }
+
+    override fun decode(bytes: ByteArray?): List<T>? {
+        if (bytes == null) return null
+        val inp = java.io.DataInputStream(java.io.ByteArrayInputStream(bytes))
+
+        val ndim = inp.readInt()
+        inp.readInt() // flags
+        inp.readInt() // element OID
+
+        if (ndim == 0) return emptyList()
+
+        // Read all dimension descriptors to compute total element count
+        var totalElements = 1
+        repeat(ndim) {
+            totalElements *= inp.readInt()
+            inp.readInt() // lower bound
+        }
+
+        return List(totalElements) {
+            val len = inp.readInt()
+            if (len == -1) null  // SQL NULL element
+            else {
+                val elemBytes = ByteArray(len)
+                inp.readFully(elemBytes)
+                elementCodec.decode(elemBytes)
+            }
+        }.filterNotNull()
+    }
+}
+
+// Pre-built array codec instances — mirror the scalar codecs above
+val Int2ArrayCodec          = ArrayCodec(PgOid.INT2_ARRAY,        Int2Codec)
+val Int4ArrayCodec          = ArrayCodec(PgOid.INT4_ARRAY,        Int4Codec)
+val Int8ArrayCodec          = ArrayCodec(PgOid.INT8_ARRAY,        Int8Codec)
+val Float4ArrayCodec        = ArrayCodec(PgOid.FLOAT4_ARRAY,      Float4Codec)
+val Float8ArrayCodec        = ArrayCodec(PgOid.FLOAT8_ARRAY,      Float8Codec)
+val TextArrayCodec          = ArrayCodec(PgOid.TEXT_ARRAY,        TextCodec)
+val BoolArrayCodec          = ArrayCodec(PgOid.BOOL_ARRAY,        BoolCodec)
+val JavaUuidArrayCodec      = ArrayCodec(PgOid.UUID_ARRAY,        JavaUuidCodec)
+val TimestamptzArrayCodec   = ArrayCodec(PgOid.TIMESTAMPTZ_ARRAY, InstantCodec)
+
+@OptIn(ExperimentalUuidApi::class)
+val KotlinUuidArrayCodec    = ArrayCodec(PgOid.UUID_ARRAY,        KotlinUuidCodec)

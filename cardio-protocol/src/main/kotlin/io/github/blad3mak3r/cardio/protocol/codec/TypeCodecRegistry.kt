@@ -21,6 +21,7 @@ open class TypeCodecRegistry {
     @OptIn(ExperimentalUuidApi::class)
     object Default : TypeCodecRegistry() {
         init {
+            // Scalar codecs
             register(Int2Codec)
             register(Int4Codec)
             register(Int8Codec)
@@ -34,6 +35,18 @@ open class TypeCodecRegistry {
             register(InstantCodec)
             register(LocalDateCodec)
             register(JsonbCodec)
+
+            // Array codecs
+            register(Int2ArrayCodec)
+            register(Int4ArrayCodec)
+            register(Int8ArrayCodec)
+            register(Float4ArrayCodec)
+            register(Float8ArrayCodec)
+            register(TextArrayCodec)
+            register(BoolArrayCodec)
+            register(JavaUuidArrayCodec)
+            register(KotlinUuidArrayCodec)
+            register(TimestamptzArrayCodec)
         }
     }
 }
