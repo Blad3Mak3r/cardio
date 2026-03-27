@@ -49,7 +49,7 @@ fun Param(value: java.time.LocalDate): Param<java.time.LocalDate> = Param(value,
 @OptIn(ExperimentalUuidApi::class)
 fun Any?.toParam(): Param<*> = when (this) {
     is Param<*>            -> this
-    null                   -> Param<String>(null, TextCodec)
+    null                   -> Param(null, TextCodec)
     is Int                 -> Param(this, Int4Codec)
     is Short               -> Param(this, Int2Codec)
     is Long                -> Param(this, Int8Codec)
