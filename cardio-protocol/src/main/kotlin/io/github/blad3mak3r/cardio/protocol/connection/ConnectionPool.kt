@@ -149,6 +149,15 @@ class ConnectionPool(
         vararg params: Any?,
     ): Long = use { it.execute(sql, *params) }
 
+    /**
+     * Verifies that at least one connection can be established by acquiring and immediately
+     * releasing a connection. Throws [PgConnectionCreationException] (or the underlying cause)
+     * if the database is unreachable or credentials are wrong.
+     */
+    suspend fun probe() {
+        use { it.query("SELECT version()") { } }
+    }
+
     /** Closes all connections and stops background tasks. */
     suspend fun close() {
         if (!closed.compareAndSet(false, true)) return

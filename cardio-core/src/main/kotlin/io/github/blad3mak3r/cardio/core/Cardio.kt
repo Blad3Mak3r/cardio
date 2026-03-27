@@ -78,9 +78,11 @@ open class Cardio(
         pool.use { conn -> block(CardioTransaction(conn)) }
 
     companion object {
-        fun new(block: Configuration.() -> Unit): Cardio {
+        suspend fun new(block: Configuration.() -> Unit): Cardio {
             val config = Configuration().apply(block)
-            return Cardio(ConnectionPool(config.buildPoolConfig()))
+            val pool   = ConnectionPool(config.buildPoolConfig())
+            pool.probe()
+            return Cardio(pool)
         }
 
         /**
@@ -91,9 +93,10 @@ open class Cardio(
          * Si prefieres zero-reflection absoluto, usa [create] y pasa la
          * instancia manualmente al constructor de tu subclase.
          */
-        inline fun <reified T : Cardio> newCustom(noinline block: Configuration.() -> Unit): T {
+        suspend inline fun <reified T : Cardio> newCustom(noinline block: Configuration.() -> Unit): T {
             val config = Configuration().apply(block)
             val pool   = ConnectionPool(config.buildPoolConfig())
+            pool.probe()
             return T::class.java
                 .getDeclaredConstructor(ConnectionPool::class.java)
                 .newInstance(pool)
