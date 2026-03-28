@@ -46,6 +46,10 @@ open class TypeCodecRegistry {
             register(TsRangeCodec)
             register(TsTzRangeCodec)
             register(DateRangeCodec)
+            register(InetCodec)
+            register(CidrCodec)
+            register(MacAddrCodec)
+            register(MacAddr8Codec)
 
             // Array codecs
             register(Int2ArrayCodec)
@@ -62,6 +66,10 @@ open class TypeCodecRegistry {
             register(IntervalArrayCodec)
             register(NumericArrayCodec)
             register(JsonArrayCodec)
+            register(InetArrayCodec)
+            register(CidrArrayCodec)
+            register(MacAddrArrayCodec)
+            register(MacAddr8ArrayCodec)
         }
     }
 }

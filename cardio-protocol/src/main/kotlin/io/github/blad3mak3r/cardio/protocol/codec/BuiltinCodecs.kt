@@ -3,6 +3,7 @@ package io.github.blad3mak3r.cardio.protocol.codec
 import io.github.blad3mak3r.cardio.protocol.PgOid
 import io.github.blad3mak3r.cardio.protocol.PgInterval
 import io.github.blad3mak3r.cardio.protocol.PgRange
+import io.github.blad3mak3r.cardio.protocol.PgInet
 import kotlin.uuid.ExperimentalUuidApi
 
 object Int2Codec : TypeCodec<Short> {
@@ -153,6 +154,128 @@ object JsonCodec : TypeCodec<String> {
         value.toByteArray(Charsets.UTF_8)
     override fun decode(bytes: ByteArray?): String? =
         bytes?.toString(Charsets.UTF_8)
+}
+
+// INET → PgInet (InetAddress + netmask)
+// PostgreSQL binary format:
+//   byte family (2=IPv4, 3=IPv6)
+//   byte netmask (0-32 for IPv4, 0-128 for IPv6)
+//   byte is_cidr (0=host, 1=network)
+//   byte address_length (4 for IPv4, 16 for IPv6)
+//   bytes address
+object InetCodec : TypeCodec<PgInet> {
+    override val oid = PgOid.INET
+    
+    override fun encode(value: PgInet): ByteArray {
+        val buf = java.io.ByteArrayOutputStream()
+        val out = java.io.DataOutputStream(buf)
+        
+        val family: Byte = if (value.isIPv4) 2 else 3
+        val addrBytes = value.address.address
+        
+        out.writeByte(family.toInt())
+        out.writeByte(value.netmask)
+        out.writeByte(0) // is_cidr = 0 (inet, not cidr)
+        out.writeByte(addrBytes.size)
+        out.write(addrBytes)
+        
+        return buf.toByteArray()
+    }
+    
+    override fun decode(bytes: ByteArray?): PgInet? {
+        if (bytes == null) return null
+        val inp = java.io.DataInputStream(java.io.ByteArrayInputStream(bytes))
+        
+        val family = inp.readByte().toInt()
+        val netmask = inp.readByte().toInt()
+        val isCidr = inp.readByte().toInt()
+        val addrLen = inp.readByte().toInt()
+        
+        val addrBytes = ByteArray(addrLen)
+        inp.readFully(addrBytes)
+        
+        val address = java.net.InetAddress.getByAddress(addrBytes)
+        return PgInet(address, netmask)
+    }
+}
+
+// CIDR → PgInet (network address + netmask)
+// Same binary format as INET but with is_cidr=1
+object CidrCodec : TypeCodec<PgInet> {
+    override val oid = PgOid.CIDR
+    
+    override fun encode(value: PgInet): ByteArray {
+        val buf = java.io.ByteArrayOutputStream()
+        val out = java.io.DataOutputStream(buf)
+        
+        val family: Byte = if (value.isIPv4) 2 else 3
+        val addrBytes = value.address.address
+        
+        out.writeByte(family.toInt())
+        out.writeByte(value.netmask)
+        out.writeByte(1) // is_cidr = 1 (network address)
+        out.writeByte(addrBytes.size)
+        out.write(addrBytes)
+        
+        return buf.toByteArray()
+    }
+    
+    override fun decode(bytes: ByteArray?): PgInet? {
+        if (bytes == null) return null
+        val inp = java.io.DataInputStream(java.io.ByteArrayInputStream(bytes))
+        
+        val family = inp.readByte().toInt()
+        val netmask = inp.readByte().toInt()
+        val isCidr = inp.readByte().toInt()
+        val addrLen = inp.readByte().toInt()
+        
+        val addrBytes = ByteArray(addrLen)
+        inp.readFully(addrBytes)
+        
+        val address = java.net.InetAddress.getByAddress(addrBytes)
+        return PgInet(address, netmask)
+    }
+}
+
+// MACADDR → String (format: "08:00:2b:01:02:03")
+// PostgreSQL binary format: 6 bytes (raw MAC address)
+object MacAddrCodec : TypeCodec<String> {
+    override val oid = PgOid.MACADDR
+    
+    override fun encode(value: String): ByteArray {
+        // Parse MAC address (supports various formats)
+        val cleaned = value.replace(":", "").replace("-", "").replace(".", "")
+        require(cleaned.length == 12) { "Invalid MAC address format: $value" }
+        
+        return ByteArray(6) { i ->
+            cleaned.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+        }
+    }
+    
+    override fun decode(bytes: ByteArray?): String? {
+        if (bytes == null || bytes.size != 6) return null
+        return bytes.joinToString(":") { "%02x".format(it) }
+    }
+}
+
+// MACADDR8 → String (format: "08:00:2b:01:02:03:04:05" - EUI-64)
+// PostgreSQL binary format: 8 bytes (raw MAC address)
+object MacAddr8Codec : TypeCodec<String> {
+    override val oid = PgOid.MACADDR8
+    
+    override fun encode(value: String): ByteArray {
+        val cleaned = value.replace(":", "").replace("-", "").replace(".", "")
+        require(cleaned.length == 16) { "Invalid MACADDR8 format: $value" }
+        
+        return ByteArray(8) { i ->
+            cleaned.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+        }
+    }
+    
+    override fun decode(bytes: ByteArray?): String? {
+        if (bytes == null || bytes.size != 8) return null
+        return bytes.joinToString(":") { "%02x".format(it) }
+    }
 }
 
 // NUMERIC / DECIMAL → java.math.BigDecimal
@@ -858,6 +981,10 @@ val TimestamptzArrayCodec   = ArrayCodec(PgOid.TIMESTAMPTZ_ARRAY, InstantCodec)
 val IntervalArrayCodec      = ArrayCodec(PgOid.INTERVAL_ARRAY,    IntervalCodec)
 val NumericArrayCodec       = ArrayCodec(PgOid.NUMERIC_ARRAY,     NumericCodec)
 val JsonArrayCodec          = ArrayCodec(PgOid.JSON_ARRAY,        JsonCodec)
+val InetArrayCodec          = ArrayCodec(PgOid.INET_ARRAY,        InetCodec)
+val CidrArrayCodec          = ArrayCodec(PgOid.CIDR_ARRAY,        CidrCodec)
+val MacAddrArrayCodec       = ArrayCodec(PgOid.MACADDR_ARRAY,     MacAddrCodec)
+val MacAddr8ArrayCodec      = ArrayCodec(PgOid.MACADDR8_ARRAY,    MacAddr8Codec)
 
 @OptIn(ExperimentalUuidApi::class)
 val KotlinUuidArrayCodec    = ArrayCodec(PgOid.UUID_ARRAY,        KotlinUuidCodec)

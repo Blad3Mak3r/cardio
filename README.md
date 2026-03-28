@@ -333,6 +333,10 @@ All types are transferred in **binary format** over the wire.
 | [`TSRANGE`](https://www.postgresql.org/docs/current/rangetypes.html) | `io.github.blad3mak3r.cardio.protocol.PgRange<LocalDateTime>` |
 | [`TSTZRANGE`](https://www.postgresql.org/docs/current/rangetypes.html) | `io.github.blad3mak3r.cardio.protocol.PgRange<Instant>` |
 | [`DATERANGE`](https://www.postgresql.org/docs/current/rangetypes.html) | `io.github.blad3mak3r.cardio.protocol.PgRange<LocalDate>` |
+| [`INET`](https://www.postgresql.org/docs/current/datatype-net-types.html) | `io.github.blad3mak3r.cardio.protocol.PgInet` |
+| [`CIDR`](https://www.postgresql.org/docs/current/datatype-net-types.html) | `io.github.blad3mak3r.cardio.protocol.PgInet` |
+| [`MACADDR`](https://www.postgresql.org/docs/current/datatype-net-types.html) | `kotlin.String` (format: "08:00:2b:01:02:03") |
+| [`MACADDR8`](https://www.postgresql.org/docs/current/datatype-net-types.html) | `kotlin.String` (format: "08:00:2b:01:02:03:04:05") |
 | [`JSON`](https://www.postgresql.org/docs/current/datatype-json.html) | `kotlin.String` |
 | [`JSONB`](https://www.postgresql.org/docs/current/datatype-json.html) | `kotlin.String` |
 
@@ -370,9 +374,9 @@ val db = Cardio.new {
 }
 ```
 
-Built-in scalar codecs: `Int2`, `Int4`, `Int8`, `Float4`, `Float8`, `Numeric`, `Text`, `Varchar` (`CHARACTER VARYING`), `Bpchar` (`CHAR(n)`), `Bool`, `ByteArray`, `UUID` (`kotlin.uuid.Uuid`), `Instant` (`kotlin.time.Instant`), `Timestamp` (`kotlinx.datetime.LocalDateTime`), `LocalDate` (`kotlinx.datetime.LocalDate`), `Interval` (`PgInterval`), `Int4Range` (`PgRange<Int>`), `Int8Range` (`PgRange<Long>`), `NumRange` (`PgRange<BigDecimal>`), `TsRange` (`PgRange<LocalDateTime>`), `TsTzRange` (`PgRange<Instant>`), `DateRange` (`PgRange<LocalDate>`), `JSON`, `JSONB`.
+Built-in scalar codecs: `Int2`, `Int4`, `Int8`, `Float4`, `Float8`, `Numeric`, `Text`, `Varchar` (`CHARACTER VARYING`), `Bpchar` (`CHAR(n)`), `Bool`, `ByteArray`, `UUID` (`kotlin.uuid.Uuid`), `Instant` (`kotlin.time.Instant`), `Timestamp` (`kotlinx.datetime.LocalDateTime`), `LocalDate` (`kotlinx.datetime.LocalDate`), `Interval` (`PgInterval`), `Int4Range` (`PgRange<Int>`), `Int8Range` (`PgRange<Long>`), `NumRange` (`PgRange<BigDecimal>`), `TsRange` (`PgRange<LocalDateTime>`), `TsTzRange` (`PgRange<Instant>`), `DateRange` (`PgRange<LocalDate>`), `Inet` (`PgInet`), `Cidr` (`PgInet`), `MacAddr`, `MacAddr8`, `JSON`, `JSONB`.
 
-Built-in array codecs (automatically selected when a `List<T>` or primitive array is passed): `Int2Array`, `Int4Array`, `Int8Array`, `Float4Array`, `Float8Array`, `NumericArray`, `TextArray`, `VarcharArray`, `BoolArray`, `UuidArray`, `TimestampArray`, `TimestamptzArray`, `IntervalArray`, `JsonArray`.
+Built-in array codecs (automatically selected when a `List<T>` or primitive array is passed): `Int2Array`, `Int4Array`, `Int8Array`, `Float4Array`, `Float8Array`, `NumericArray`, `TextArray`, `VarcharArray`, `BoolArray`, `UuidArray`, `TimestampArray`, `TimestamptzArray`, `IntervalArray`, `JsonArray`, `InetArray`, `CidrArray`, `MacAddrArray`, `MacAddr8Array`.
 
 ### Pool statistics
 

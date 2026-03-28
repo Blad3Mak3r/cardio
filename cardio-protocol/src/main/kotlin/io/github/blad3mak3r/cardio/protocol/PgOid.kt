@@ -13,6 +13,9 @@ object PgOid {
     const val FLOAT8      = 701
     const val UNKNOWN     = 705
     const val INET        = 869
+    const val CIDR        = 650
+    const val MACADDR     = 829
+    const val MACADDR8    = 774
     const val BPCHAR      = 1042  // char(n)
     const val VARCHAR     = 1043
     const val DATE        = 1082
@@ -42,6 +45,10 @@ object PgOid {
     const val FLOAT4_ARRAY      = 1021
     const val FLOAT8_ARRAY      = 1022
     const val JSON_ARRAY        = 199
+    const val INET_ARRAY        = 1041
+    const val CIDR_ARRAY        = 651
+    const val MACADDR_ARRAY     = 1040
+    const val MACADDR8_ARRAY    = 775
     const val TIMESTAMP_ARRAY   = 1115
     const val TIMESTAMPTZ_ARRAY = 1185
     const val INTERVAL_ARRAY    = 1187
