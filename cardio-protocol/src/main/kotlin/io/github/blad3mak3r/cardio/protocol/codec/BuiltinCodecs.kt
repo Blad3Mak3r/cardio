@@ -74,7 +74,7 @@ object ByteArrayCodec : TypeCodec<ByteArray> {
     override fun decode(bytes: ByteArray?) = bytes
 }
 
-// kotlin.uuid.Uuid ↔ 16 bytes big-endian — no java.util.UUID
+// kotlin.uuid.Uuid ↔ 16 bytes big-endian
 @OptIn(ExperimentalUuidApi::class)
 object KotlinUuidCodec : TypeCodec<kotlin.uuid.Uuid> {
     override val oid = PgOid.UUID
@@ -91,17 +91,6 @@ object KotlinUuidCodec : TypeCodec<kotlin.uuid.Uuid> {
     }
 }
 
-object JavaUuidCodec : TypeCodec<java.util.UUID> {
-    override val oid = PgOid.UUID
-    override fun encode(value: java.util.UUID): ByteArray {
-        return Int8Codec.encode(value.mostSignificantBits) + Int8Codec.encode(value.leastSignificantBits)
-    }
-    override fun decode(bytes: ByteArray?): java.util.UUID? {
-        if (bytes == null || bytes.size != 16) return null
-        val msb = Int8Codec.decode(bytes.copyOfRange(0, 8))!!
-        val lsb = Int8Codec.decode(bytes.copyOfRange(8, 16))!!
-        return java.util.UUID(msb, lsb)
-    }}
 
 // java.time.Instant ↔ TIMESTAMPTZ
 // Postgres epoch: microseconds since 2000-01-01 00:00:00 UTC
@@ -215,7 +204,6 @@ val Float4ArrayCodec        = ArrayCodec(PgOid.FLOAT4_ARRAY,      Float4Codec)
 val Float8ArrayCodec        = ArrayCodec(PgOid.FLOAT8_ARRAY,      Float8Codec)
 val TextArrayCodec          = ArrayCodec(PgOid.TEXT_ARRAY,        TextCodec)
 val BoolArrayCodec          = ArrayCodec(PgOid.BOOL_ARRAY,        BoolCodec)
-val JavaUuidArrayCodec      = ArrayCodec(PgOid.UUID_ARRAY,        JavaUuidCodec)
 val TimestamptzArrayCodec   = ArrayCodec(PgOid.TIMESTAMPTZ_ARRAY, InstantCodec)
 
 @OptIn(ExperimentalUuidApi::class)

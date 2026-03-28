@@ -154,13 +154,13 @@ class ConnectionPool(
         sql: String,
         vararg params: Any?,
         mapper: (Row) -> T,
-    ): List<T> = use { it.query(sql, *params, mapper = mapper) }
+    ): List<T> = use { it.query(sql = sql, params = params, mapper = mapper) }
 
     /** Shortcut: execute without explicit transaction. */
     suspend fun execute(
         sql: String,
         vararg params: Any?,
-    ): Long = use { it.execute(sql, *params) }
+    ): Long = use { it.execute(sql = sql, params = params) }
 
     /**
      * Verifies that at least one connection can be established by acquiring and immediately

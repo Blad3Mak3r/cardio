@@ -30,7 +30,6 @@ open class TypeCodecRegistry {
             register(TextCodec)
             register(BoolCodec)
             register(ByteArrayCodec)
-            register(JavaUuidCodec)
             register(KotlinUuidCodec)
             register(InstantCodec)
             register(LocalDateCodec)
@@ -44,7 +43,6 @@ open class TypeCodecRegistry {
             register(Float8ArrayCodec)
             register(TextArrayCodec)
             register(BoolArrayCodec)
-            register(JavaUuidArrayCodec)
             register(KotlinUuidArrayCodec)
             register(TimestamptzArrayCodec)
         }

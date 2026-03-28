@@ -18,7 +18,7 @@ class Param<T : Any> @PublishedApi internal constructor(
 }
 
 // Con codec explícito
-fun <T : Any> Param(value: T,  codec: TypeCodec<T>): Param<T> = Param(value, codec)
+fun <T : Any> Param(value: T,  codec: TypeCodec<T>): Param<T> = Param(value as T?, codec)
 
 // Conveniencia — el codec se infiere del tipo
 fun Param(value: Int):                 Param<Int>                 = Param(value, Int4Codec)
@@ -29,7 +29,6 @@ fun Param(value: Boolean):             Param<Boolean>             = Param(value,
 fun Param(value: Float):               Param<Float>               = Param(value, Float4Codec)
 fun Param(value: Double):              Param<Double>              = Param(value, Float8Codec)
 fun Param(value: ByteArray):           Param<ByteArray>           = Param(value, ByteArrayCodec)
-fun Param(value: java.util.UUID):      Param<java.util.UUID>      = Param(value, JavaUuidCodec)
 @OptIn(ExperimentalUuidApi::class)
 fun Param(value: kotlin.uuid.Uuid):    Param<kotlin.uuid.Uuid>    = Param(value, KotlinUuidCodec)
 fun Param(value: java.time.Instant):   Param<java.time.Instant>   = Param(value, InstantCodec)
@@ -50,8 +49,6 @@ fun Param(value: List<Double>):            Param<List<Double>>            = Para
 fun Param(value: List<String>):            Param<List<String>>            = Param(value, TextArrayCodec)
 @JvmName("ParamBooleanList")
 fun Param(value: List<Boolean>):           Param<List<Boolean>>           = Param(value, BoolArrayCodec)
-@JvmName("ParamJavaUuidList")
-fun Param(value: List<java.util.UUID>):    Param<List<java.util.UUID>>    = Param(value, JavaUuidArrayCodec)
 @JvmName("ParamInstantList")
 fun Param(value: List<java.time.Instant>): Param<List<java.time.Instant>> = Param(value, TimestamptzArrayCodec)
 
@@ -90,7 +87,6 @@ fun Any?.toParam(): Param<*> = when (this) {
     is String              -> Param(this, TextCodec)
     is Boolean             -> Param(this, BoolCodec)
     is ByteArray           -> Param(this, ByteArrayCodec)
-    is java.util.UUID      -> Param(this, JavaUuidCodec)
     is kotlin.uuid.Uuid    -> Param(this, KotlinUuidCodec)
     is java.time.Instant   -> Param(this, InstantCodec)
     is java.time.LocalDate -> Param(this, LocalDateCodec)
@@ -113,7 +109,6 @@ fun Any?.toParam(): Param<*> = when (this) {
             first is Double         -> Param(this.filterNotNull() as List<Double>,            Float8ArrayCodec)
             first is String         -> Param(this.filterNotNull() as List<String>,            TextArrayCodec)
             first is Boolean        -> Param(this.filterNotNull() as List<Boolean>,           BoolArrayCodec)
-            first is java.util.UUID -> Param(this.filterNotNull() as List<java.util.UUID>,    JavaUuidArrayCodec)
             first is kotlin.uuid.Uuid -> Param(this.filterNotNull() as List<kotlin.uuid.Uuid>, KotlinUuidArrayCodec)
             first is java.time.Instant -> Param(this.filterNotNull() as List<java.time.Instant>, TimestamptzArrayCodec)
             else -> error(

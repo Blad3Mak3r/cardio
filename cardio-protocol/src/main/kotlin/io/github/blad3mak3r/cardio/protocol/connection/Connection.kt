@@ -93,7 +93,7 @@ class Connection private constructor(
         val prev = state
         state = State.InQuery
         try {
-            executeQuery(sql, params, mapper)
+            executeQuery(sql = sql, params = params, mapper = mapper)
         } catch (e: PgException) {
             // drainUntilReady() already called updateTransactionState; restore prev as safety net
             state = prev
@@ -168,7 +168,7 @@ class Connection private constructor(
         params: Array<out Any?>,
         mapper: (Row) -> T
     ): List<T> {
-        sendExtendedQuery(sql, params)
+        sendExtendedQuery(sql = sql, params = params)
 
         val results = mutableListOf<T>()
         var rowDescription: PgMessage.RowDescription? = null

@@ -9,7 +9,6 @@ import io.github.blad3mak3r.cardio.protocol.codec.InstantCodec
 import io.github.blad3mak3r.cardio.protocol.codec.Int2Codec
 import io.github.blad3mak3r.cardio.protocol.codec.Int4Codec
 import io.github.blad3mak3r.cardio.protocol.codec.Int8Codec
-import io.github.blad3mak3r.cardio.protocol.codec.JavaUuidCodec
 import io.github.blad3mak3r.cardio.protocol.codec.KotlinUuidCodec
 import io.github.blad3mak3r.cardio.protocol.codec.LocalDateCodec
 import io.github.blad3mak3r.cardio.protocol.codec.TextCodec
@@ -60,7 +59,6 @@ class CardioDecoder(
     override fun <T> decodeSerializableValue(deserializer: DeserializationStrategy<T>): T {
 
         return when (deserializer.descriptor.serialName) {
-            "java.util.UUID"      -> row.get(currentColumnName, JavaUuidCodec) as T
             "kotlin.uuid.Uuid"    -> row.get(currentColumnName, KotlinUuidCodec) as T
             "java.time.Instant",
             "kotlinx.datetime.Instant" -> row.get(currentColumnName, InstantCodec) as T
@@ -82,7 +80,6 @@ class CardioDecoder(
         deserializer: DeserializationStrategy<T?>,
     ): T? {
         return when (deserializer.descriptor.serialName) {
-            "java.util.UUID"      -> row.get(currentColumnName, JavaUuidCodec) as T
             "kotlin.uuid.Uuid"    -> row.get(currentColumnName, KotlinUuidCodec) as T
             "java.time.Instant",
             "kotlinx.datetime.Instant" -> row.getOrNull(currentColumnName, InstantCodec) as T?
