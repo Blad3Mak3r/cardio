@@ -78,7 +78,7 @@ class CardioTests {
 
     @Test
     fun textArrayTest() = runBlocking {
-        val textArray = Array(256) { it.toString() }.toList()
+        val textArray = Array(256) { it.toString() }
         val result = client!!.query("SELECT unnest($1::text[])", textArray) { row ->
             row.get<String>(0)
         }

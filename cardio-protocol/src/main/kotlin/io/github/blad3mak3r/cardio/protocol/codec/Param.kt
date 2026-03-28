@@ -60,6 +60,27 @@ fun Param(value: FloatArray):   Param<List<Float>>   = Param(value.toList(), Flo
 fun Param(value: DoubleArray):  Param<List<Double>>  = Param(value.toList(), Float8ArrayCodec)
 fun Param(value: BooleanArray): Param<List<Boolean>> = Param(value.toList(), BoolArrayCodec)
 
+// Typed Array<T> sugar — mirrors the List<T> overloads above
+@JvmName("ParamIntArray")
+fun Param(value: Array<Int>):                 Param<List<Int>>                 = Param(value.toList(), Int4ArrayCodec)
+@JvmName("ParamShortArray")
+fun Param(value: Array<Short>):               Param<List<Short>>               = Param(value.toList(), Int2ArrayCodec)
+@JvmName("ParamLongArray")
+fun Param(value: Array<Long>):                Param<List<Long>>                = Param(value.toList(), Int8ArrayCodec)
+@JvmName("ParamFloatArray")
+fun Param(value: Array<Float>):               Param<List<Float>>               = Param(value.toList(), Float4ArrayCodec)
+@JvmName("ParamDoubleArray")
+fun Param(value: Array<Double>):              Param<List<Double>>              = Param(value.toList(), Float8ArrayCodec)
+@JvmName("ParamStringArray")
+fun Param(value: Array<String>):              Param<List<String>>              = Param(value.toList(), TextArrayCodec)
+@JvmName("ParamBooleanArray")
+fun Param(value: Array<Boolean>):             Param<List<Boolean>>             = Param(value.toList(), BoolArrayCodec)
+@JvmName("ParamInstantArray")
+fun Param(value: Array<java.time.Instant>):   Param<List<java.time.Instant>>   = Param(value.toList(), TimestamptzArrayCodec)
+@OptIn(ExperimentalUuidApi::class)
+@JvmName("ParamKotlinUuidArray")
+fun Param(value: Array<kotlin.uuid.Uuid>):    Param<List<kotlin.uuid.Uuid>>    = Param(value.toList(), KotlinUuidArrayCodec)
+
 /**
  * Convierte cualquier valor al [Param] correspondiente de forma automática.
  *
@@ -98,6 +119,7 @@ fun Any?.toParam(): Param<*> = when (this) {
     is DoubleArray         -> Param(this.toList(), Float8ArrayCodec)
     is BooleanArray        -> Param(this.toList(), BoolArrayCodec)
     // Generic List — codec inferred from the first non-null element
+    is Array<*> -> this.toList().toParam()
     is List<*> -> {
         val first = this.firstOrNull { it != null }
         when {
