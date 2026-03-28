@@ -39,6 +39,12 @@ open class TypeCodecRegistry {
             register(NumericCodec)
             register(TimestampCodec)
             register(IntervalCodec)
+            register(Int4RangeCodec)
+            register(Int8RangeCodec)
+            register(NumRangeCodec)
+            register(TsRangeCodec)
+            register(TsTzRangeCodec)
+            register(DateRangeCodec)
 
             // Array codecs
             register(Int2ArrayCodec)

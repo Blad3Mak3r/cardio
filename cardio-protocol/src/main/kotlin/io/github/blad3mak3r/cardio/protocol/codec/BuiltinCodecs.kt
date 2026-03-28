@@ -2,6 +2,7 @@ package io.github.blad3mak3r.cardio.protocol.codec
 
 import io.github.blad3mak3r.cardio.protocol.PgOid
 import io.github.blad3mak3r.cardio.protocol.PgInterval
+import io.github.blad3mak3r.cardio.protocol.PgRange
 import kotlin.uuid.ExperimentalUuidApi
 
 object Int2Codec : TypeCodec<Short> {
@@ -328,6 +329,442 @@ object IntervalCodec : TypeCodec<PgInterval> {
         val months = inp.readInt()
         
         return PgInterval(months, days, microseconds)
+    }
+}
+
+// INT4RANGE → PgRange<Int>
+// PostgreSQL binary format:
+//   byte flags (bit 0: lower inclusive, bit 1: upper inclusive,
+//               bit 2: lower unbounded, bit 3: upper unbounded, bit 4: empty)
+//   int32 lower bound (if not unbounded)
+//   int32 upper bound (if not unbounded)
+object Int4RangeCodec : TypeCodec<PgRange<Int>> {
+    override val oid = PgOid.INT4RANGE
+    
+    private const val LOWER_INCLUSIVE = 0x01
+    private const val UPPER_INCLUSIVE = 0x02
+    private const val LOWER_UNBOUNDED = 0x04
+    private const val UPPER_UNBOUNDED = 0x08
+    private const val EMPTY = 0x10
+    
+    override fun encode(value: PgRange<Int>): ByteArray {
+        val buf = java.io.ByteArrayOutputStream()
+        val out = java.io.DataOutputStream(buf)
+        
+        // Build flags byte
+        var flags = 0
+        if (value.empty) {
+            flags = flags or EMPTY
+            out.writeByte(flags)
+            return buf.toByteArray()
+        }
+        
+        if (value.lowerInclusive) flags = flags or LOWER_INCLUSIVE
+        if (value.upperInclusive) flags = flags or UPPER_INCLUSIVE
+        if (value.lower == null) flags = flags or LOWER_UNBOUNDED
+        if (value.upper == null) flags = flags or UPPER_UNBOUNDED
+        
+        out.writeByte(flags)
+        
+        // Write bounds if present
+        if (value.lower != null) {
+            out.writeInt(value.lower)
+        }
+        if (value.upper != null) {
+            out.writeInt(value.upper)
+        }
+        
+        return buf.toByteArray()
+    }
+    
+    override fun decode(bytes: ByteArray?): PgRange<Int>? {
+        if (bytes == null) return null
+        val inp = java.io.DataInputStream(java.io.ByteArrayInputStream(bytes))
+        
+        val flags = inp.readByte().toInt()
+        
+        if ((flags and EMPTY) != 0) {
+            return PgRange.empty()
+        }
+        
+        val lowerInclusive = (flags and LOWER_INCLUSIVE) != 0
+        val upperInclusive = (flags and UPPER_INCLUSIVE) != 0
+        val lowerUnbounded = (flags and LOWER_UNBOUNDED) != 0
+        val upperUnbounded = (flags and UPPER_UNBOUNDED) != 0
+        
+        val lower = if (lowerUnbounded) null else inp.readInt()
+        val upper = if (upperUnbounded) null else inp.readInt()
+        
+        return PgRange(lower, upper, lowerInclusive, upperInclusive)
+    }
+}
+
+// INT8RANGE → PgRange<Long>
+// PostgreSQL binary format: same as INT4RANGE but with int64 bounds
+object Int8RangeCodec : TypeCodec<PgRange<Long>> {
+    override val oid = PgOid.INT8RANGE
+    
+    private const val LOWER_INCLUSIVE = 0x01
+    private const val UPPER_INCLUSIVE = 0x02
+    private const val LOWER_UNBOUNDED = 0x04
+    private const val UPPER_UNBOUNDED = 0x08
+    private const val EMPTY = 0x10
+    
+    override fun encode(value: PgRange<Long>): ByteArray {
+        val buf = java.io.ByteArrayOutputStream()
+        val out = java.io.DataOutputStream(buf)
+        
+        // Build flags byte
+        var flags = 0
+        if (value.empty) {
+            flags = flags or EMPTY
+            out.writeByte(flags)
+            return buf.toByteArray()
+        }
+        
+        if (value.lowerInclusive) flags = flags or LOWER_INCLUSIVE
+        if (value.upperInclusive) flags = flags or UPPER_INCLUSIVE
+        if (value.lower == null) flags = flags or LOWER_UNBOUNDED
+        if (value.upper == null) flags = flags or UPPER_UNBOUNDED
+        
+        out.writeByte(flags)
+        
+        // Write bounds if present
+        if (value.lower != null) {
+            out.writeLong(value.lower)
+        }
+        if (value.upper != null) {
+            out.writeLong(value.upper)
+        }
+        
+        return buf.toByteArray()
+    }
+    
+    override fun decode(bytes: ByteArray?): PgRange<Long>? {
+        if (bytes == null) return null
+        val inp = java.io.DataInputStream(java.io.ByteArrayInputStream(bytes))
+        
+        val flags = inp.readByte().toInt()
+        
+        if ((flags and EMPTY) != 0) {
+            return PgRange.empty()
+        }
+        
+        val lowerInclusive = (flags and LOWER_INCLUSIVE) != 0
+        val upperInclusive = (flags and UPPER_INCLUSIVE) != 0
+        val lowerUnbounded = (flags and LOWER_UNBOUNDED) != 0
+        val upperUnbounded = (flags and UPPER_UNBOUNDED) != 0
+        
+        val lower = if (lowerUnbounded) null else inp.readLong()
+        val upper = if (upperUnbounded) null else inp.readLong()
+        
+        return PgRange(lower, upper, lowerInclusive, upperInclusive)
+    }
+}
+
+// NUMRANGE → PgRange<BigDecimal>
+// PostgreSQL binary format: flags + NUMERIC bounds
+object NumRangeCodec : TypeCodec<PgRange<java.math.BigDecimal>> {
+    override val oid = PgOid.NUMRANGE
+    
+    private const val LOWER_INCLUSIVE = 0x01
+    private const val UPPER_INCLUSIVE = 0x02
+    private const val LOWER_UNBOUNDED = 0x04
+    private const val UPPER_UNBOUNDED = 0x08
+    private const val EMPTY = 0x10
+    
+    override fun encode(value: PgRange<java.math.BigDecimal>): ByteArray {
+        val buf = java.io.ByteArrayOutputStream()
+        val out = java.io.DataOutputStream(buf)
+        
+        // Build flags byte
+        var flags = 0
+        if (value.empty) {
+            flags = flags or EMPTY
+            out.writeByte(flags)
+            return buf.toByteArray()
+        }
+        
+        if (value.lowerInclusive) flags = flags or LOWER_INCLUSIVE
+        if (value.upperInclusive) flags = flags or UPPER_INCLUSIVE
+        if (value.lower == null) flags = flags or LOWER_UNBOUNDED
+        if (value.upper == null) flags = flags or UPPER_UNBOUNDED
+        
+        out.writeByte(flags)
+        
+        // Write bounds if present (each bound is preceded by its length)
+        if (value.lower != null) {
+            val lowerBytes = NumericCodec.encode(value.lower)
+            out.writeInt(lowerBytes.size)
+            out.write(lowerBytes)
+        }
+        if (value.upper != null) {
+            val upperBytes = NumericCodec.encode(value.upper)
+            out.writeInt(upperBytes.size)
+            out.write(upperBytes)
+        }
+        
+        return buf.toByteArray()
+    }
+    
+    override fun decode(bytes: ByteArray?): PgRange<java.math.BigDecimal>? {
+        if (bytes == null) return null
+        val inp = java.io.DataInputStream(java.io.ByteArrayInputStream(bytes))
+        
+        val flags = inp.readByte().toInt()
+        
+        if ((flags and EMPTY) != 0) {
+            return PgRange.empty()
+        }
+        
+        val lowerInclusive = (flags and LOWER_INCLUSIVE) != 0
+        val upperInclusive = (flags and UPPER_INCLUSIVE) != 0
+        val lowerUnbounded = (flags and LOWER_UNBOUNDED) != 0
+        val upperUnbounded = (flags and UPPER_UNBOUNDED) != 0
+        
+        val lower = if (lowerUnbounded) null else {
+            val len = inp.readInt()
+            val boundBytes = ByteArray(len)
+            inp.readFully(boundBytes)
+            NumericCodec.decode(boundBytes)
+        }
+        
+        val upper = if (upperUnbounded) null else {
+            val len = inp.readInt()
+            val boundBytes = ByteArray(len)
+            inp.readFully(boundBytes)
+            NumericCodec.decode(boundBytes)
+        }
+        
+        return PgRange(lower, upper, lowerInclusive, upperInclusive)
+    }
+}
+
+// TSRANGE → PgRange<LocalDateTime>
+// PostgreSQL binary format: flags + TIMESTAMP bounds (microseconds)
+object TsRangeCodec : TypeCodec<PgRange<kotlinx.datetime.LocalDateTime>> {
+    override val oid = PgOid.TSRANGE
+    
+    private const val LOWER_INCLUSIVE = 0x01
+    private const val UPPER_INCLUSIVE = 0x02
+    private const val LOWER_UNBOUNDED = 0x04
+    private const val UPPER_UNBOUNDED = 0x08
+    private const val EMPTY = 0x10
+    
+    override fun encode(value: PgRange<kotlinx.datetime.LocalDateTime>): ByteArray {
+        val buf = java.io.ByteArrayOutputStream()
+        val out = java.io.DataOutputStream(buf)
+        
+        // Build flags byte
+        var flags = 0
+        if (value.empty) {
+            flags = flags or EMPTY
+            out.writeByte(flags)
+            return buf.toByteArray()
+        }
+        
+        if (value.lowerInclusive) flags = flags or LOWER_INCLUSIVE
+        if (value.upperInclusive) flags = flags or UPPER_INCLUSIVE
+        if (value.lower == null) flags = flags or LOWER_UNBOUNDED
+        if (value.upper == null) flags = flags or UPPER_UNBOUNDED
+        
+        out.writeByte(flags)
+        
+        // Write bounds if present (each bound is preceded by its length = 8)
+        if (value.lower != null) {
+            out.writeInt(8)  // timestamp is always 8 bytes
+            out.write(TimestampCodec.encode(value.lower))
+        }
+        if (value.upper != null) {
+            out.writeInt(8)
+            out.write(TimestampCodec.encode(value.upper))
+        }
+        
+        return buf.toByteArray()
+    }
+    
+    override fun decode(bytes: ByteArray?): PgRange<kotlinx.datetime.LocalDateTime>? {
+        if (bytes == null) return null
+        val inp = java.io.DataInputStream(java.io.ByteArrayInputStream(bytes))
+        
+        val flags = inp.readByte().toInt()
+        
+        if ((flags and EMPTY) != 0) {
+            return PgRange.empty()
+        }
+        
+        val lowerInclusive = (flags and LOWER_INCLUSIVE) != 0
+        val upperInclusive = (flags and UPPER_INCLUSIVE) != 0
+        val lowerUnbounded = (flags and LOWER_UNBOUNDED) != 0
+        val upperUnbounded = (flags and UPPER_UNBOUNDED) != 0
+        
+        val lower = if (lowerUnbounded) null else {
+            val len = inp.readInt()
+            val boundBytes = ByteArray(len)
+            inp.readFully(boundBytes)
+            TimestampCodec.decode(boundBytes)
+        }
+        
+        val upper = if (upperUnbounded) null else {
+            val len = inp.readInt()
+            val boundBytes = ByteArray(len)
+            inp.readFully(boundBytes)
+            TimestampCodec.decode(boundBytes)
+        }
+        
+        return PgRange(lower, upper, lowerInclusive, upperInclusive)
+    }
+}
+
+// TSTZRANGE → PgRange<Instant>
+// PostgreSQL binary format: flags + TIMESTAMPTZ bounds (microseconds)
+object TsTzRangeCodec : TypeCodec<PgRange<kotlin.time.Instant>> {
+    override val oid = PgOid.TSTZRANGE
+    
+    private const val LOWER_INCLUSIVE = 0x01
+    private const val UPPER_INCLUSIVE = 0x02
+    private const val LOWER_UNBOUNDED = 0x04
+    private const val UPPER_UNBOUNDED = 0x08
+    private const val EMPTY = 0x10
+    
+    override fun encode(value: PgRange<kotlin.time.Instant>): ByteArray {
+        val buf = java.io.ByteArrayOutputStream()
+        val out = java.io.DataOutputStream(buf)
+        
+        // Build flags byte
+        var flags = 0
+        if (value.empty) {
+            flags = flags or EMPTY
+            out.writeByte(flags)
+            return buf.toByteArray()
+        }
+        
+        if (value.lowerInclusive) flags = flags or LOWER_INCLUSIVE
+        if (value.upperInclusive) flags = flags or UPPER_INCLUSIVE
+        if (value.lower == null) flags = flags or LOWER_UNBOUNDED
+        if (value.upper == null) flags = flags or UPPER_UNBOUNDED
+        
+        out.writeByte(flags)
+        
+        // Write bounds if present (each bound is preceded by its length = 8)
+        if (value.lower != null) {
+            out.writeInt(8)  // timestamptz is always 8 bytes
+            out.write(InstantCodec.encode(value.lower))
+        }
+        if (value.upper != null) {
+            out.writeInt(8)
+            out.write(InstantCodec.encode(value.upper))
+        }
+        
+        return buf.toByteArray()
+    }
+    
+    override fun decode(bytes: ByteArray?): PgRange<kotlin.time.Instant>? {
+        if (bytes == null) return null
+        val inp = java.io.DataInputStream(java.io.ByteArrayInputStream(bytes))
+        
+        val flags = inp.readByte().toInt()
+        
+        if ((flags and EMPTY) != 0) {
+            return PgRange.empty()
+        }
+        
+        val lowerInclusive = (flags and LOWER_INCLUSIVE) != 0
+        val upperInclusive = (flags and UPPER_INCLUSIVE) != 0
+        val lowerUnbounded = (flags and LOWER_UNBOUNDED) != 0
+        val upperUnbounded = (flags and UPPER_UNBOUNDED) != 0
+        
+        val lower = if (lowerUnbounded) null else {
+            val len = inp.readInt()
+            val boundBytes = ByteArray(len)
+            inp.readFully(boundBytes)
+            InstantCodec.decode(boundBytes)
+        }
+        
+        val upper = if (upperUnbounded) null else {
+            val len = inp.readInt()
+            val boundBytes = ByteArray(len)
+            inp.readFully(boundBytes)
+            InstantCodec.decode(boundBytes)
+        }
+        
+        return PgRange(lower, upper, lowerInclusive, upperInclusive)
+    }
+}
+
+// DATERANGE → PgRange<LocalDate>
+// PostgreSQL binary format: flags + DATE bounds (days since 2000-01-01)
+object DateRangeCodec : TypeCodec<PgRange<kotlinx.datetime.LocalDate>> {
+    override val oid = PgOid.DATERANGE
+    
+    private const val LOWER_INCLUSIVE = 0x01
+    private const val UPPER_INCLUSIVE = 0x02
+    private const val LOWER_UNBOUNDED = 0x04
+    private const val UPPER_UNBOUNDED = 0x08
+    private const val EMPTY = 0x10
+    
+    override fun encode(value: PgRange<kotlinx.datetime.LocalDate>): ByteArray {
+        val buf = java.io.ByteArrayOutputStream()
+        val out = java.io.DataOutputStream(buf)
+        
+        // Build flags byte
+        var flags = 0
+        if (value.empty) {
+            flags = flags or EMPTY
+            out.writeByte(flags)
+            return buf.toByteArray()
+        }
+        
+        if (value.lowerInclusive) flags = flags or LOWER_INCLUSIVE
+        if (value.upperInclusive) flags = flags or UPPER_INCLUSIVE
+        if (value.lower == null) flags = flags or LOWER_UNBOUNDED
+        if (value.upper == null) flags = flags or UPPER_UNBOUNDED
+        
+        out.writeByte(flags)
+        
+        // Write bounds if present (each bound is preceded by its length = 4)
+        if (value.lower != null) {
+            out.writeInt(4)  // date is always 4 bytes
+            out.write(LocalDateCodec.encode(value.lower))
+        }
+        if (value.upper != null) {
+            out.writeInt(4)
+            out.write(LocalDateCodec.encode(value.upper))
+        }
+        
+        return buf.toByteArray()
+    }
+    
+    override fun decode(bytes: ByteArray?): PgRange<kotlinx.datetime.LocalDate>? {
+        if (bytes == null) return null
+        val inp = java.io.DataInputStream(java.io.ByteArrayInputStream(bytes))
+        
+        val flags = inp.readByte().toInt()
+        
+        if ((flags and EMPTY) != 0) {
+            return PgRange.empty()
+        }
+        
+        val lowerInclusive = (flags and LOWER_INCLUSIVE) != 0
+        val upperInclusive = (flags and UPPER_INCLUSIVE) != 0
+        val lowerUnbounded = (flags and LOWER_UNBOUNDED) != 0
+        val upperUnbounded = (flags and UPPER_UNBOUNDED) != 0
+        
+        val lower = if (lowerUnbounded) null else {
+            val len = inp.readInt()
+            val boundBytes = ByteArray(len)
+            inp.readFully(boundBytes)
+            LocalDateCodec.decode(boundBytes)
+        }
+        
+        val upper = if (upperUnbounded) null else {
+            val len = inp.readInt()
+            val boundBytes = ByteArray(len)
+            inp.readFully(boundBytes)
+            LocalDateCodec.decode(boundBytes)
+        }
+        
+        return PgRange(lower, upper, lowerInclusive, upperInclusive)
     }
 }
 

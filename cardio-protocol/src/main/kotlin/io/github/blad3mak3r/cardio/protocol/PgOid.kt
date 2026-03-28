@@ -23,8 +23,14 @@ object PgOid {
     const val TIMETZ      = 1266
     const val NUMERIC     = 1700
     const val UUID        = 2950
+    const val INT4RANGE   = 3904
+    const val NUMRANGE    = 3906
+    const val TSRANGE     = 3908
+    const val TSTZRANGE   = 3910
+    const val DATERANGE   = 3912
     const val JSONB       = 3802
     const val JSON        = 114
+    const val INT8RANGE   = 3926
 
     // Arrays (OID = base_type + 1 in many cases, but we make them explicit)
     const val BOOL_ARRAY        = 1000
