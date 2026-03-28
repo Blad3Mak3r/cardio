@@ -136,6 +136,28 @@ val db = Cardio.new {
 }
 ```
 
+Alternatively, use a connection URL with the `url()` helper:
+
+```kotlin
+val db = Cardio.new {
+    url("postgres://user:secret@localhost:5432/mydb")
+}
+```
+
+The URL format is `postgres[ql]://username:password@host:port/database`. You can also pass optional query parameters:
+
+| Parameter | Values                                  | Default    |
+|---|-----------------------------------------|------------|
+| `sslMode` | `disable` `prefer` `require` |  `disable` |
+| `applicationName` | any string                              | —          |
+
+```kotlin
+val db = Cardio.new {
+    url("postgres://user:secret@localhost:5432/mydb?sslMode=require&applicationName=my-app")
+    maxSize = 20
+}
+```
+
 For a typed subclass (e.g. to inject into repositories):
 
 ```kotlin

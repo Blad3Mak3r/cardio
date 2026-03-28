@@ -1,4 +1,5 @@
 import io.github.blad3mak3r.cardio.core.Cardio
+import io.github.blad3mak3r.cardio.core.url
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -17,11 +18,7 @@ class CardioTests {
     @BeforeAll
     fun setUp() = runBlocking {
         client = Cardio.new {
-            host = "localhost"
-            port = 5432
-            username = "test"
-            password = "test"
-            database = "test"
+            url("postgres://test:test@localhost:5432/test?sslMode=disable&applicationName=test")
             minSize = 1
             maxSize = 1
         }
