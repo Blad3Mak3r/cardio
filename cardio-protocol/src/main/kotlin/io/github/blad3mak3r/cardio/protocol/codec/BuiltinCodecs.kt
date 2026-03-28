@@ -1,6 +1,7 @@
 package io.github.blad3mak3r.cardio.protocol.codec
 
 import io.github.blad3mak3r.cardio.protocol.PgOid
+import io.github.blad3mak3r.cardio.protocol.PgInterval
 import kotlin.uuid.ExperimentalUuidApi
 
 object Int2Codec : TypeCodec<Short> {
@@ -144,6 +145,193 @@ object JsonbCodec : TypeCodec<String> {
     }
 }
 
+// NUMERIC / DECIMAL → java.math.BigDecimal
+// PostgreSQL binary format:
+//   int16 ndigits (number of base-10000 digits)
+//   int16 weight  (power of 10000 for first digit)
+//   int16 sign    (0x0000 = positive, 0x4000 = negative, 0xC000 = NaN)
+//   int16 dscale  (number of decimal digits after decimal point)
+//   int16[] digits (base-10000 digits, most significant first)
+object NumericCodec : TypeCodec<java.math.BigDecimal> {
+    override val oid = PgOid.NUMERIC
+    
+    override fun encode(value: java.math.BigDecimal): ByteArray {
+        val buf = java.io.ByteArrayOutputStream()
+        val out = java.io.DataOutputStream(buf)
+        
+        // Handle zero specially
+        if (value.compareTo(java.math.BigDecimal.ZERO) == 0) {
+            out.writeShort(0) // ndigits
+            out.writeShort(0) // weight
+            out.writeShort(0) // sign (positive)
+            out.writeShort(0) // dscale
+            return buf.toByteArray()
+        }
+        
+        val sign = when {
+            value.signum() < 0 -> 0x4000
+            else -> 0x0000
+        }
+        
+        val absValue = value.abs()
+        val scale = value.scale()
+        
+        // Convert to unscaled string and split into base-10000 digits
+        val unscaledStr = absValue.unscaledValue().toString()
+        val totalDigits = unscaledStr.length
+        
+        // Calculate weight (position of first digit group relative to decimal point)
+        val firstDigitPos = totalDigits - scale
+        val weight = (firstDigitPos - 1) / 4
+        
+        // Pad to make length divisible by 4
+        val padLeft = ((4 - ((firstDigitPos - 1) % 4) - 1) % 4)
+        val paddedStr = "0".repeat(padLeft) + unscaledStr
+        
+        // Split into groups of 4 decimal digits (base-10000)
+        val digitGroups = mutableListOf<Short>()
+        var i = 0
+        while (i < paddedStr.length) {
+            val end = minOf(i + 4, paddedStr.length)
+            val group = paddedStr.substring(i, end).toShort()
+            digitGroups.add(group)
+            i += 4
+        }
+        
+        // Remove trailing zeros
+        while (digitGroups.isNotEmpty() && digitGroups.last() == 0.toShort()) {
+            digitGroups.removeLast()
+        }
+        
+        out.writeShort(digitGroups.size)
+        out.writeShort(weight)
+        out.writeShort(sign)
+        out.writeShort(scale)
+        
+        for (digit in digitGroups) {
+            out.writeShort(digit.toInt())
+        }
+        
+        return buf.toByteArray()
+    }
+    
+    override fun decode(bytes: ByteArray?): java.math.BigDecimal? {
+        if (bytes == null) return null
+        val inp = java.io.DataInputStream(java.io.ByteArrayInputStream(bytes))
+        
+        val ndigits = inp.readShort().toInt()
+        val weight = inp.readShort().toInt()
+        val sign = inp.readShort().toInt()
+        val dscale = inp.readShort().toInt()
+        
+        if (ndigits == 0) return java.math.BigDecimal.ZERO
+        if (sign == 0xC000) return null // NaN not supported in BigDecimal
+        
+        val digits = ShortArray(ndigits) { inp.readShort() }
+        
+        // Build unscaled value string
+        val sb = StringBuilder()
+        for (i in digits.indices) {
+            val digit = digits[i].toInt()
+            if (i == 0) {
+                sb.append(digit)
+            } else {
+                sb.append(digit.toString().padStart(4, '0'))
+            }
+        }
+        
+        val unscaledValue = java.math.BigInteger(sb.toString())
+        val result = java.math.BigDecimal(unscaledValue, dscale)
+        
+        return if (sign == 0x4000) result.negate() else result
+    }
+}
+
+// TIMESTAMP (without timezone) → kotlinx.datetime.LocalDateTime
+// PostgreSQL format: microseconds since 2000-01-01 00:00:00 (no timezone)
+// LocalDateTime is treated as if it were in UTC for encoding/decoding purposes
+object TimestampCodec : TypeCodec<kotlinx.datetime.LocalDateTime> {
+    override val oid = PgOid.TIMESTAMP
+    private const val PG_EPOCH_MICROS = 946684800_000_000L // microseconds from Unix epoch to 2000-01-01 00:00:00 UTC
+    
+    override fun encode(value: kotlinx.datetime.LocalDateTime): ByteArray {
+        // Convert LocalDateTime components to microseconds since Unix epoch
+        val date = value.date
+        val time = value.time
+        
+        // Days since Unix epoch (1970-01-01)
+        val days = date.toEpochDays().toLong()
+        
+        // Microseconds within the day
+        val timeOfDayMicros = time.toSecondOfDay().toLong() * 1_000_000L + time.nanosecond / 1_000L
+        
+        // Total microseconds since Unix epoch
+        val unixMicros = days * 86400_000_000L + timeOfDayMicros
+        
+        // Subtract PG epoch to get microseconds since 2000-01-01
+        val pgMicros = unixMicros - PG_EPOCH_MICROS
+        
+        return Int8Codec.encode(pgMicros)
+    }
+    
+    override fun decode(bytes: ByteArray?): kotlinx.datetime.LocalDateTime? {
+        val pgMicros = Int8Codec.decode(bytes) ?: return null
+        
+        // Convert to microseconds since Unix epoch
+        val unixMicros = pgMicros + PG_EPOCH_MICROS
+        
+        // Extract days and time components
+        val days = (unixMicros / 86400_000_000L).toInt()
+        val timeOfDayMicros = unixMicros % 86400_000_000L
+        
+        val date = kotlinx.datetime.LocalDate.fromEpochDays(days)
+        
+        val secondOfDay = (timeOfDayMicros / 1_000_000L).toInt()
+        val nanos = ((timeOfDayMicros % 1_000_000L) * 1_000L).toInt()
+        
+        val hour = secondOfDay / 3600
+        val minute = (secondOfDay % 3600) / 60
+        val second = secondOfDay % 60
+        
+        return kotlinx.datetime.LocalDateTime(
+            date.year, date.month, date.day,
+            hour, minute, second, nanos
+        )
+    }
+}
+
+// INTERVAL → PgInterval
+// PostgreSQL binary format:
+//   int64 microseconds (time portion)
+//   int32 days
+//   int32 months
+object IntervalCodec : TypeCodec<PgInterval> {
+    override val oid = PgOid.INTERVAL
+    
+    override fun encode(value: PgInterval): ByteArray {
+        val buf = java.io.ByteArrayOutputStream()
+        val out = java.io.DataOutputStream(buf)
+        
+        out.writeLong(value.microseconds)
+        out.writeInt(value.days)
+        out.writeInt(value.months)
+        
+        return buf.toByteArray()
+    }
+    
+    override fun decode(bytes: ByteArray?): PgInterval? {
+        if (bytes == null) return null
+        val inp = java.io.DataInputStream(java.io.ByteArrayInputStream(bytes))
+        
+        val microseconds = inp.readLong()
+        val days = inp.readInt()
+        val months = inp.readInt()
+        
+        return PgInterval(months, days, microseconds)
+    }
+}
+
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Array codec — encodes/decodes List<T> using the PostgreSQL binary array format
 //
@@ -219,7 +407,11 @@ val Float8ArrayCodec        = ArrayCodec(PgOid.FLOAT8_ARRAY,      Float8Codec)
 val TextArrayCodec          = ArrayCodec(PgOid.TEXT_ARRAY,        TextCodec)
 val VarcharArrayCodec       = ArrayCodec(PgOid.VARCHAR_ARRAY,     VarcharCodec)
 val BoolArrayCodec          = ArrayCodec(PgOid.BOOL_ARRAY,        BoolCodec)
+val TimestampArrayCodec     = ArrayCodec(PgOid.TIMESTAMP_ARRAY,   TimestampCodec)
 val TimestamptzArrayCodec   = ArrayCodec(PgOid.TIMESTAMPTZ_ARRAY, InstantCodec)
+val IntervalArrayCodec      = ArrayCodec(PgOid.INTERVAL_ARRAY,    IntervalCodec)
+val NumericArrayCodec       = ArrayCodec(PgOid.NUMERIC_ARRAY,     NumericCodec)
 
 @OptIn(ExperimentalUuidApi::class)
 val KotlinUuidArrayCodec    = ArrayCodec(PgOid.UUID_ARRAY,        KotlinUuidCodec)
+

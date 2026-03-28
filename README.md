@@ -40,7 +40,7 @@ Cardio is a lightweight Kotlin library for non-blocking PostgreSQL access using 
 - 📦 **Binary wire encoding** — all supported types are sent and received in binary format, not as text strings.
 - 🔁 **Coroutine-based connection pool** — built on `Semaphore` + `Channel` from `kotlinx.coroutines`, no external pool library.
 - 🧩 **Pluggable type codecs** — implement `TypeCodec<T>` to teach Cardio any custom or user-defined PostgreSQL type.
-- 🗃️ **Built-in codecs** — `Int2/4/8`, `Float4/8`, `Text`, `Bool`, `ByteArray`, `UUID`, `Instant`, `LocalDate`, `JSONB` out of the box.
+- 🗃️ **Built-in codecs** — `Int2/4/8`, `Float4/8`, `Numeric`, `Text`, `Bool`, `ByteArray`, `UUID`, `Instant`, `Timestamp`, `LocalDate`, `Interval`, `JSONB` out of the box.
 - 📋 **Array parameters & results** — pass any `List<T>` or Kotlin primitive array (`IntArray`, `LongArray`, …) directly as a query parameter; array columns are decoded back to `List<T>` automatically.
 - 📊 **Pool observability** — `db.stats` exposes live counters (active/idle connections, total acquired, errors).
 - 🧾 **kotlinx.serialization bridge** — deserialize a `Row` into a `@Serializable` data class in one line via `cardio-serialization`.
@@ -288,10 +288,13 @@ val tags: List<String> = row.get("tags")
 | `List<Long>` / `LongArray` | `int8[]` |
 | `List<Float>` / `FloatArray` | `float4[]` |
 | `List<Double>` / `DoubleArray` | `float8[]` |
+| `List<java.math.BigDecimal>` | `numeric[]` |
 | `List<String>` | `text[]` |
 | `List<Boolean>` / `BooleanArray` | `bool[]` |
 | `List<kotlin.uuid.Uuid>` | `uuid[]` |
 | `List<kotlin.time.Instant>` | `timestamptz[]` |
+| `List<kotlinx.datetime.LocalDateTime>` | `timestamp[]` |
+| `List<PgInterval>` | `interval[]` |
 
 For any other element type, supply an explicit `ArrayCodec`:
 
@@ -315,12 +318,15 @@ All types are transferred in **binary format** over the wire.
 | [`BIGINT`](https://www.postgresql.org/docs/current/datatype-numeric.html) | `kotlin.Long` |
 | [`REAL`](https://www.postgresql.org/docs/current/datatype-numeric.html) | `kotlin.Float` |
 | [`DOUBLE PRECISION`](https://www.postgresql.org/docs/current/datatype-numeric.html) | `kotlin.Double` |
+| [`NUMERIC` / `DECIMAL`](https://www.postgresql.org/docs/current/datatype-numeric.html) | `java.math.BigDecimal` |
 | [`TEXT`](https://www.postgresql.org/docs/current/datatype-character.html) | `kotlin.String` |
 | [`BOOLEAN`](https://www.postgresql.org/docs/current/datatype-boolean.html) | `kotlin.Boolean` |
 | [`BYTEA`](https://www.postgresql.org/docs/current/datatype-binary.html) | `kotlin.ByteArray` |
 | [`UUID`](https://www.postgresql.org/docs/current/datatype-uuid.html) | `kotlin.uuid.Uuid` |
 | [`TIMESTAMP WITH TIME ZONE`](https://www.postgresql.org/docs/current/datatype-datetime.html) | `kotlin.time.Instant` |
+| [`TIMESTAMP`](https://www.postgresql.org/docs/current/datatype-datetime.html) | `kotlinx.datetime.LocalDateTime` |
 | [`DATE`](https://www.postgresql.org/docs/current/datatype-datetime.html) | `kotlinx.datetime.LocalDate` |
+| [`INTERVAL`](https://www.postgresql.org/docs/current/datatype-datetime.html) | `io.github.blad3mak3r.cardio.protocol.PgInterval` |
 | [`JSONB`](https://www.postgresql.org/docs/current/datatype-json.html) | `kotlin.String` |
 
 #### Array types
@@ -334,10 +340,13 @@ All types are transferred in **binary format** over the wire.
 | [`BIGINT[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<Long>` / `LongArray` |
 | [`REAL[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<Float>` / `FloatArray` |
 | [`DOUBLE PRECISION[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<Double>` / `DoubleArray` |
+| [`NUMERIC[]` / `DECIMAL[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<java.math.BigDecimal>` |
 | [`TEXT[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<String>` |
 | [`BOOLEAN[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<Boolean>` / `BooleanArray` |
 | [`UUID[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<kotlin.uuid.Uuid>` |
 | [`TIMESTAMP WITH TIME ZONE[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<kotlin.time.Instant>` |
+| [`TIMESTAMP[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<kotlinx.datetime.LocalDateTime>` |
+| [`INTERVAL[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<PgInterval>` |
 
 ---
 
@@ -354,9 +363,9 @@ val db = Cardio.new {
 }
 ```
 
-Built-in scalar codecs: `Int2`, `Int4`, `Int8`, `Float4`, `Float8`, `Text`, `Varchar` (`CHARACTER VARYING`), `Bpchar` (`CHAR(n)`), `Bool`, `ByteArray`, `UUID` (`kotlin.uuid.Uuid`), `Instant` (`kotlin.time.Instant`), `LocalDate` (`kotlinx.datetime.LocalDate`), `JSONB`.
+Built-in scalar codecs: `Int2`, `Int4`, `Int8`, `Float4`, `Float8`, `Numeric`, `Text`, `Varchar` (`CHARACTER VARYING`), `Bpchar` (`CHAR(n)`), `Bool`, `ByteArray`, `UUID` (`kotlin.uuid.Uuid`), `Instant` (`kotlin.time.Instant`), `Timestamp` (`kotlinx.datetime.LocalDateTime`), `LocalDate` (`kotlinx.datetime.LocalDate`), `Interval` (`PgInterval`), `JSONB`.
 
-Built-in array codecs (automatically selected when a `List<T>` or primitive array is passed): `Int2Array`, `Int4Array`, `Int8Array`, `Float4Array`, `Float8Array`, `TextArray`, `VarcharArray`, `BoolArray`, `UuidArray`, `TimestamptzArray`.
+Built-in array codecs (automatically selected when a `List<T>` or primitive array is passed): `Int2Array`, `Int4Array`, `Int8Array`, `Float4Array`, `Float8Array`, `NumericArray`, `TextArray`, `VarcharArray`, `BoolArray`, `UuidArray`, `TimestampArray`, `TimestamptzArray`, `IntervalArray`.
 
 ### Pool statistics
 

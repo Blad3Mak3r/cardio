@@ -36,6 +36,9 @@ open class TypeCodecRegistry {
             register(InstantCodec)
             register(LocalDateCodec)
             register(JsonbCodec)
+            register(NumericCodec)
+            register(TimestampCodec)
+            register(IntervalCodec)
 
             // Array codecs
             register(Int2ArrayCodec)
@@ -47,7 +50,10 @@ open class TypeCodecRegistry {
             register(VarcharArrayCodec)
             register(BoolArrayCodec)
             register(KotlinUuidArrayCodec)
+            register(TimestampArrayCodec)
             register(TimestamptzArrayCodec)
+            register(IntervalArrayCodec)
+            register(NumericArrayCodec)
         }
     }
 }
