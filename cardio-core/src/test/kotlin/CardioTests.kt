@@ -90,10 +90,23 @@ class CardioTests {
         }
     }
 
+    @Test
+    fun boolArrayTest() = runBlocking {
+        val boolArray = BooleanArray(256) { it % 2 == 0 }
+        val result = client!!.query("SELECT unnest($1::bool[])", boolArray) { row ->
+            row.get<Boolean>(0)
+        }
+
+        assert(result.size == boolArray.size) { "Expected result size to be ${boolArray.size}, but got ${result.size}" }
+        for (i in boolArray.indices) {
+            assert(result[i] == boolArray[i]) { "Expected value at index $i to be ${boolArray[i]}, but got ${result[i]}" }
+        }
+    }
+
     @AfterAll
     fun tearDown() {
         runBlocking {
-            val ops = 6L
+            val ops = 7L
             require(client != null) { "Connection pool should be initialized successfully." }
             val stats = client!!.stats
             assert(stats.totalAcquired == ops) { "Expected total acquired connections to be $ops, but got ${client!!.stats.totalAcquired}" }
