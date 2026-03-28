@@ -34,7 +34,7 @@ class CardioTests {
     }
 
     @Test
-    fun intTests(): Unit = runBlocking {
+    fun intTests() = runBlocking {
         val result = client!!.query("SELECT 1") { row ->
             row.get<Int>(0)
         }.firstOrNull()
