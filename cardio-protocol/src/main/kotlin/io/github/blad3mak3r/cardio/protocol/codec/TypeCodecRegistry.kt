@@ -36,6 +36,7 @@ open class TypeCodecRegistry {
             register(InstantCodec)
             register(LocalDateCodec)
             register(JsonbCodec)
+            register(JsonCodec)
             register(NumericCodec)
             register(TimestampCodec)
             register(IntervalCodec)
@@ -60,6 +61,7 @@ open class TypeCodecRegistry {
             register(TimestamptzArrayCodec)
             register(IntervalArrayCodec)
             register(NumericArrayCodec)
+            register(JsonArrayCodec)
         }
     }
 }

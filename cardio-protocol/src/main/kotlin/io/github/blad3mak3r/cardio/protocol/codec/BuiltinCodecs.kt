@@ -146,6 +146,15 @@ object JsonbCodec : TypeCodec<String> {
     }
 }
 
+// JSON: Plain text JSON (no binary compression, no version byte)
+object JsonCodec : TypeCodec<String> {
+    override val oid = PgOid.JSON
+    override fun encode(value: String): ByteArray =
+        value.toByteArray(Charsets.UTF_8)
+    override fun decode(bytes: ByteArray?): String? =
+        bytes?.toString(Charsets.UTF_8)
+}
+
 // NUMERIC / DECIMAL → java.math.BigDecimal
 // PostgreSQL binary format:
 //   int16 ndigits (number of base-10000 digits)
@@ -848,6 +857,7 @@ val TimestampArrayCodec     = ArrayCodec(PgOid.TIMESTAMP_ARRAY,   TimestampCodec
 val TimestamptzArrayCodec   = ArrayCodec(PgOid.TIMESTAMPTZ_ARRAY, InstantCodec)
 val IntervalArrayCodec      = ArrayCodec(PgOid.INTERVAL_ARRAY,    IntervalCodec)
 val NumericArrayCodec       = ArrayCodec(PgOid.NUMERIC_ARRAY,     NumericCodec)
+val JsonArrayCodec          = ArrayCodec(PgOid.JSON_ARRAY,        JsonCodec)
 
 @OptIn(ExperimentalUuidApi::class)
 val KotlinUuidArrayCodec    = ArrayCodec(PgOid.UUID_ARRAY,        KotlinUuidCodec)

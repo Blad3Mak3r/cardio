@@ -41,6 +41,7 @@ object PgOid {
     const val VARCHAR_ARRAY     = 1015
     const val FLOAT4_ARRAY      = 1021
     const val FLOAT8_ARRAY      = 1022
+    const val JSON_ARRAY        = 199
     const val TIMESTAMP_ARRAY   = 1115
     const val TIMESTAMPTZ_ARRAY = 1185
     const val INTERVAL_ARRAY    = 1187
