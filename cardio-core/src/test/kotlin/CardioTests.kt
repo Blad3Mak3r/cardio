@@ -1,5 +1,6 @@
 import io.github.blad3mak3r.cardio.core.Cardio
 import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
@@ -86,6 +87,18 @@ class CardioTests {
         assert(result.size == textArray.size) { "Expected result size to be ${textArray.size}, but got ${result.size}" }
         for (i in textArray.indices) {
             assert(result[i] == textArray[i]) { "Expected value at index $i to be ${textArray[i]}, but got ${result[i]}" }
+        }
+    }
+
+    @AfterAll
+    fun tearDown() {
+        runBlocking {
+            val ops = 6L
+            require(client != null) { "Connection pool should be initialized successfully." }
+            val stats = client!!.stats
+            assert(stats.totalAcquired == ops) { "Expected total acquired connections to be $ops, but got ${client!!.stats.totalAcquired}" }
+            assert(stats.totalReleased == ops) { "Expected total released connections to be $ops, but got ${client!!.stats.totalReleased}" }
+            client?.close()
         }
     }
 }
