@@ -92,31 +92,31 @@ object KotlinUuidCodec : TypeCodec<kotlin.uuid.Uuid> {
 }
 
 
-// java.time.Instant ↔ TIMESTAMPTZ
+// kotlin.Instant ↔ TIMESTAMPTZ
 // Postgres epoch: microseconds since 2000-01-01 00:00:00 UTC
-object InstantCodec : TypeCodec<java.time.Instant> {
+object InstantCodec : TypeCodec<kotlin.time.Instant> {
     override val oid = PgOid.TIMESTAMPTZ
     private const val PG_EPOCH_MICROS = 946684800_000_000L
-    override fun encode(value: java.time.Instant): ByteArray {
-        val micros = value.epochSecond * 1_000_000L + value.nano / 1_000L - PG_EPOCH_MICROS
+    override fun encode(value: kotlin.time.Instant): ByteArray {
+        val micros = value.epochSeconds * 1_000_000L + value.nanosecondsOfSecond / 1_000L - PG_EPOCH_MICROS
         return Int8Codec.encode(micros)
     }
-    override fun decode(bytes: ByteArray?): java.time.Instant? {
+    override fun decode(bytes: ByteArray?): kotlin.time.Instant? {
         val micros = Int8Codec.decode(bytes) ?: return null
         val unix   = micros + PG_EPOCH_MICROS
-        return java.time.Instant.ofEpochSecond(unix / 1_000_000L, (unix % 1_000_000L) * 1_000L)
+        return kotlin.time.Instant.fromEpochSeconds(unix / 1_000_000L, (unix % 1_000_000L) * 1_000L)
     }
 }
 
-// java.time.LocalDate ↔ DATE
-// Postgres DATE: days since 2000-01-01
-object LocalDateCodec : TypeCodec<java.time.LocalDate> {
+// kotlinx.datetime.LocalDate ↔ DATE
+// Postgres DATE: days since 2000-01-01; kotlinx.datetime epoch: days since 1970-01-01
+object LocalDateCodec : TypeCodec<kotlinx.datetime.LocalDate> {
     override val oid = PgOid.DATE
-    private val PG_EPOCH = java.time.LocalDate.of(2000, 1, 1)
-    override fun encode(value: java.time.LocalDate): ByteArray =
-        Int4Codec.encode(java.time.temporal.ChronoUnit.DAYS.between(PG_EPOCH, value).toInt())
-    override fun decode(bytes: ByteArray?): java.time.LocalDate? =
-        Int4Codec.decode(bytes)?.let { PG_EPOCH.plusDays(it.toLong()) }
+    private const val PG_EPOCH_DAYS = 10957L // days from 1970-01-01 to 2000-01-01
+    override fun encode(value: kotlinx.datetime.LocalDate): ByteArray =
+        Int4Codec.encode((value.toEpochDays() - PG_EPOCH_DAYS).toInt())
+    override fun decode(bytes: ByteArray?): kotlinx.datetime.LocalDate? =
+        Int4Codec.decode(bytes)?.let { kotlinx.datetime.LocalDate.fromEpochDays(it + PG_EPOCH_DAYS) }
 }
 
 // JSONB: Postgres prepends version byte 0x01

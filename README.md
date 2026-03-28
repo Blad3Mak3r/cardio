@@ -244,8 +244,8 @@ val tags: List<String> = row.get("tags")
 | `List<Double>` / `DoubleArray` | `float8[]` |
 | `List<String>` | `text[]` |
 | `List<Boolean>` / `BooleanArray` | `bool[]` |
-| `List<java.util.UUID>` | `uuid[]` |
-| `List<java.time.Instant>` | `timestamptz[]` |
+| `List<kotlin.uuid.Uuid>` | `uuid[]` |
+| `List<kotlin.time.Instant>` | `timestamptz[]` |
 
 For any other element type, supply an explicit `ArrayCodec`:
 
@@ -273,8 +273,8 @@ All types are transferred in **binary format** over the wire.
 | [`BOOLEAN`](https://www.postgresql.org/docs/current/datatype-boolean.html) | `kotlin.Boolean` |
 | [`BYTEA`](https://www.postgresql.org/docs/current/datatype-binary.html) | `kotlin.ByteArray` |
 | [`UUID`](https://www.postgresql.org/docs/current/datatype-uuid.html) | `kotlin.uuid.Uuid` |
-| [`TIMESTAMP WITH TIME ZONE`](https://www.postgresql.org/docs/current/datatype-datetime.html) | `java.time.Instant` |
-| [`DATE`](https://www.postgresql.org/docs/current/datatype-datetime.html) | `java.time.LocalDate` |
+| [`TIMESTAMP WITH TIME ZONE`](https://www.postgresql.org/docs/current/datatype-datetime.html) | `kotlin.time.Instant` |
+| [`DATE`](https://www.postgresql.org/docs/current/datatype-datetime.html) | `kotlinx.datetime.LocalDate` |
 | [`JSONB`](https://www.postgresql.org/docs/current/datatype-json.html) | `kotlin.String` |
 
 #### Array types
@@ -291,7 +291,7 @@ All types are transferred in **binary format** over the wire.
 | [`TEXT[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<String>` |
 | [`BOOLEAN[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<Boolean>` / `BooleanArray` |
 | [`UUID[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<kotlin.uuid.Uuid>` |
-| [`TIMESTAMP WITH TIME ZONE[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<java.time.Instant>` |
+| [`TIMESTAMP WITH TIME ZONE[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<kotlin.time.Instant>` |
 
 ---
 
@@ -308,7 +308,7 @@ val db = Cardio.new {
 }
 ```
 
-Built-in scalar codecs: `Int2`, `Int4`, `Int8`, `Float4`, `Float8`, `Text`, `Bool`, `ByteArray`, `UUID` (Java + Kotlin `uuid.Uuid`), `Instant`, `LocalDate`, `JSONB`.
+Built-in scalar codecs: `Int2`, `Int4`, `Int8`, `Float4`, `Float8`, `Text`, `Bool`, `ByteArray`, `UUID` (`kotlin.uuid.Uuid`), `Instant` (`kotlin.time.Instant`), `LocalDate` (`kotlinx.datetime.LocalDate`), `JSONB`.
 
 Built-in array codecs (automatically selected when a `List<T>` or primitive array is passed): `Int2Array`, `Int4Array`, `Int8Array`, `Float4Array`, `Float8Array`, `TextArray`, `BoolArray`, `UuidArray`, `TimestamptzArray`.
 

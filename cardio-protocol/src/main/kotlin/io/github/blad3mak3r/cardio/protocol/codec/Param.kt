@@ -21,18 +21,18 @@ class Param<T : Any> @PublishedApi internal constructor(
 fun <T : Any> Param(value: T,  codec: TypeCodec<T>): Param<T> = Param(value as T?, codec)
 
 // Conveniencia — el codec se infiere del tipo
-fun Param(value: Int):                 Param<Int>                 = Param(value, Int4Codec)
-fun Param(value: Short):               Param<Short>               = Param(value, Int2Codec)
-fun Param(value: Long):                Param<Long>                = Param(value, Int8Codec)
-fun Param(value: String):              Param<String>              = Param(value, TextCodec)
-fun Param(value: Boolean):             Param<Boolean>             = Param(value, BoolCodec)
-fun Param(value: Float):               Param<Float>               = Param(value, Float4Codec)
-fun Param(value: Double):              Param<Double>              = Param(value, Float8Codec)
-fun Param(value: ByteArray):           Param<ByteArray>           = Param(value, ByteArrayCodec)
+fun Param(value: Int):                       Param<Int>                       = Param(value, Int4Codec)
+fun Param(value: Short):                     Param<Short>                     = Param(value, Int2Codec)
+fun Param(value: Long):                      Param<Long>                      = Param(value, Int8Codec)
+fun Param(value: String):                    Param<String>                    = Param(value, TextCodec)
+fun Param(value: Boolean):                   Param<Boolean>                   = Param(value, BoolCodec)
+fun Param(value: Float):                     Param<Float>                     = Param(value, Float4Codec)
+fun Param(value: Double):                    Param<Double>                    = Param(value, Float8Codec)
+fun Param(value: ByteArray):                 Param<ByteArray>                 = Param(value, ByteArrayCodec)
 @OptIn(ExperimentalUuidApi::class)
-fun Param(value: kotlin.uuid.Uuid):    Param<kotlin.uuid.Uuid>    = Param(value, KotlinUuidCodec)
-fun Param(value: java.time.Instant):   Param<java.time.Instant>   = Param(value, InstantCodec)
-fun Param(value: java.time.LocalDate): Param<java.time.LocalDate> = Param(value, LocalDateCodec)
+fun Param(value: kotlin.uuid.Uuid):          Param<kotlin.uuid.Uuid>          = Param(value, KotlinUuidCodec)
+fun Param(value: kotlin.time.Instant):        Param<kotlin.time.Instant>        = Param(value, InstantCodec)
+fun Param(value: kotlinx.datetime.LocalDate): Param<kotlinx.datetime.LocalDate> = Param(value, LocalDateCodec)
 
 // Conveniencia para arrays — tipos escalares comunes
 @JvmName("ParamIntList")
@@ -50,7 +50,7 @@ fun Param(value: List<String>):            Param<List<String>>            = Para
 @JvmName("ParamBooleanList")
 fun Param(value: List<Boolean>):           Param<List<Boolean>>           = Param(value, BoolArrayCodec)
 @JvmName("ParamInstantList")
-fun Param(value: List<java.time.Instant>): Param<List<java.time.Instant>> = Param(value, TimestamptzArrayCodec)
+fun Param(value: List<kotlin.time.Instant>): Param<List<kotlin.time.Instant>> = Param(value, TimestamptzArrayCodec)
 
 // Primitive array sugar (IntArray, LongArray, …)
 fun Param(value: IntArray):     Param<List<Int>>     = Param(value.toList(), Int4ArrayCodec)
@@ -76,7 +76,7 @@ fun Param(value: Array<String>):              Param<List<String>>              =
 @JvmName("ParamBooleanArray")
 fun Param(value: Array<Boolean>):             Param<List<Boolean>>             = Param(value.toList(), BoolArrayCodec)
 @JvmName("ParamInstantArray")
-fun Param(value: Array<java.time.Instant>):   Param<List<java.time.Instant>>   = Param(value.toList(), TimestamptzArrayCodec)
+fun Param(value: Array<kotlin.time.Instant>): Param<List<kotlin.time.Instant>> = Param(value.toList(), TimestamptzArrayCodec)
 @OptIn(ExperimentalUuidApi::class)
 @JvmName("ParamKotlinUuidArray")
 fun Param(value: Array<kotlin.uuid.Uuid>):    Param<List<kotlin.uuid.Uuid>>    = Param(value.toList(), KotlinUuidArrayCodec)
@@ -108,9 +108,9 @@ fun Any?.toParam(): Param<*> = when (this) {
     is String              -> Param(this, TextCodec)
     is Boolean             -> Param(this, BoolCodec)
     is ByteArray           -> Param(this, ByteArrayCodec)
-    is kotlin.uuid.Uuid    -> Param(this, KotlinUuidCodec)
-    is java.time.Instant   -> Param(this, InstantCodec)
-    is java.time.LocalDate -> Param(this, LocalDateCodec)
+    is kotlin.uuid.Uuid              -> Param(this, KotlinUuidCodec)
+    is kotlin.time.Instant           -> Param(this, InstantCodec)
+    is kotlinx.datetime.LocalDate    -> Param(this, LocalDateCodec)
     // Primitive Kotlin arrays
     is IntArray            -> Param(this.toList(), Int4ArrayCodec)
     is ShortArray          -> Param(this.toList(), Int2ArrayCodec)
@@ -132,7 +132,7 @@ fun Any?.toParam(): Param<*> = when (this) {
             first is String         -> Param(this.filterNotNull() as List<String>,            TextArrayCodec)
             first is Boolean        -> Param(this.filterNotNull() as List<Boolean>,           BoolArrayCodec)
             first is kotlin.uuid.Uuid -> Param(this.filterNotNull() as List<kotlin.uuid.Uuid>, KotlinUuidArrayCodec)
-            first is java.time.Instant -> Param(this.filterNotNull() as List<java.time.Instant>, TimestamptzArrayCodec)
+            first is kotlin.time.Instant -> Param(this.filterNotNull() as List<kotlin.time.Instant>, TimestamptzArrayCodec)
             else -> error(
                 "No built-in array codec for List element type '${first::class.qualifiedName}'. " +
                 "Use Param(list, ArrayCodec(arrayOid, elementCodec)) to provide an explicit codec."

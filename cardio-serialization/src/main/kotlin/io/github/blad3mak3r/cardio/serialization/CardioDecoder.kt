@@ -59,13 +59,11 @@ class CardioDecoder(
     override fun <T> decodeSerializableValue(deserializer: DeserializationStrategy<T>): T {
 
         return when (deserializer.descriptor.serialName) {
-            "kotlin.uuid.Uuid"    -> row.get(currentColumnName, KotlinUuidCodec) as T
-            "java.time.Instant",
-            "kotlinx.datetime.Instant" -> row.get(currentColumnName, InstantCodec) as T
-            "java.time.LocalDate",
+            "kotlin.uuid.Uuid"           -> row.get(currentColumnName, KotlinUuidCodec) as T
+            "kotlin.time.Instant"        -> row.get(currentColumnName, InstantCodec) as T
             "kotlinx.datetime.LocalDate" -> row.get(currentColumnName, LocalDateCodec) as T
-            "kotlin.ByteArray"    -> row.get(currentColumnName, ByteArrayCodec) as T
-            "kotlin.String"       -> row.get(currentColumnName, TextCodec) as T
+            "kotlin.ByteArray"           -> row.get(currentColumnName, ByteArrayCodec) as T
+            "kotlin.String"              -> row.get(currentColumnName, TextCodec) as T
 
             else -> deserializer.deserialize(
                 CardioDecoder(row, serializersModule)
@@ -80,13 +78,11 @@ class CardioDecoder(
         deserializer: DeserializationStrategy<T?>,
     ): T? {
         return when (deserializer.descriptor.serialName) {
-            "kotlin.uuid.Uuid"    -> row.get(currentColumnName, KotlinUuidCodec) as T
-            "java.time.Instant",
-            "kotlinx.datetime.Instant" -> row.getOrNull(currentColumnName, InstantCodec) as T?
-            "java.time.LocalDate",
+            "kotlin.uuid.Uuid"           -> row.getOrNull(currentColumnName, KotlinUuidCodec) as T?
+            "kotlin.time.Instant"        -> row.getOrNull(currentColumnName, InstantCodec) as T?
             "kotlinx.datetime.LocalDate" -> row.getOrNull(currentColumnName, LocalDateCodec) as T?
-            "kotlin.ByteArray"    -> row.getOrNull(currentColumnName, ByteArrayCodec) as T?
-            "kotlin.String"       -> row.getOrNull(currentColumnName, TextCodec) as T?
+            "kotlin.ByteArray"           -> row.getOrNull(currentColumnName, ByteArrayCodec) as T?
+            "kotlin.String"              -> row.getOrNull(currentColumnName, TextCodec) as T?
             else -> {
 
                 if (row.columnNames.contains(currentColumnName) &&
