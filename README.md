@@ -256,6 +256,45 @@ db.query(
 ) { row -> /* … */ }
 ```
 
+### Supported types
+
+All types are transferred in **binary format** over the wire.
+
+#### Scalar types
+
+| PostgreSQL type | Kotlin / Cardio type |
+|---|---|
+| [`SMALLINT`](https://www.postgresql.org/docs/current/datatype-numeric.html) | `kotlin.Short` |
+| [`INTEGER`](https://www.postgresql.org/docs/current/datatype-numeric.html) | `kotlin.Int` |
+| [`BIGINT`](https://www.postgresql.org/docs/current/datatype-numeric.html) | `kotlin.Long` |
+| [`REAL`](https://www.postgresql.org/docs/current/datatype-numeric.html) | `kotlin.Float` |
+| [`DOUBLE PRECISION`](https://www.postgresql.org/docs/current/datatype-numeric.html) | `kotlin.Double` |
+| [`TEXT`](https://www.postgresql.org/docs/current/datatype-character.html) | `kotlin.String` |
+| [`BOOLEAN`](https://www.postgresql.org/docs/current/datatype-boolean.html) | `kotlin.Boolean` |
+| [`BYTEA`](https://www.postgresql.org/docs/current/datatype-binary.html) | `kotlin.ByteArray` |
+| [`UUID`](https://www.postgresql.org/docs/current/datatype-uuid.html) | `kotlin.uuid.Uuid` |
+| [`TIMESTAMP WITH TIME ZONE`](https://www.postgresql.org/docs/current/datatype-datetime.html) | `java.time.Instant` |
+| [`DATE`](https://www.postgresql.org/docs/current/datatype-datetime.html) | `java.time.LocalDate` |
+| [`JSONB`](https://www.postgresql.org/docs/current/datatype-json.html) | `kotlin.String` |
+
+#### Array types
+
+[PostgreSQL array](https://www.postgresql.org/docs/current/arrays.html) columns and parameters are decoded/encoded automatically using the built-in array codecs.
+
+| PostgreSQL type | Kotlin / Cardio type |
+|---|---|
+| [`SMALLINT[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<Short>` / `ShortArray` |
+| [`INTEGER[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<Int>` / `IntArray` |
+| [`BIGINT[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<Long>` / `LongArray` |
+| [`REAL[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<Float>` / `FloatArray` |
+| [`DOUBLE PRECISION[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<Double>` / `DoubleArray` |
+| [`TEXT[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<String>` |
+| [`BOOLEAN[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<Boolean>` / `BooleanArray` |
+| [`UUID[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<kotlin.uuid.Uuid>` |
+| [`TIMESTAMP WITH TIME ZONE[]`](https://www.postgresql.org/docs/current/arrays.html) | `List<java.time.Instant>` |
+
+---
+
 ### Custom codecs
 
 Implement `TypeCodec<T>` for any PostgreSQL type and register it at startup:
