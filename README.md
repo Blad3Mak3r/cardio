@@ -8,6 +8,30 @@ Cardio is a lightweight Kotlin library for non-blocking PostgreSQL access using 
 
 ---
 
+## 📑 Table of Contents
+
+- [Features](#features)
+- [How it works](#how-it-works)
+- [Why Cardio?](#why-cardio)
+- [Installation](#installation)
+  - [Gradle (Kotlin DSL)](#gradle-kotlin-dsl)
+  - [Gradle (Groovy DSL)](#gradle-groovy-dsl)
+  - [Maven](#maven)
+- [Usage](#usage)
+  - [Create a connection pool](#create-a-connection-pool)
+  - [Queries](#queries)
+  - [Transactions](#transactions)
+  - [Repositories](#repositories)
+  - [kotlinx.serialization](#kotlinxserialization)
+  - [Arrays](#arrays)
+  - [Supported types](#supported-types)
+  - [Custom codecs](#custom-codecs)
+  - [Pool statistics](#pool-statistics)
+- [SSL](#ssl)
+- [Building](#building)
+
+---
+
 ## Features
 
 - 🔌 **Custom PostgreSQL wire protocol** — implements PG protocol 3.0 directly over Ktor TCP sockets, no Vert.x, no JDBC, no R2DBC or Reactor required.
