@@ -115,11 +115,11 @@ class ConnectionPool(
     }
 
     suspend fun <T> use(block: suspend (Connection) -> T): T {
-        check(!closed.get()) { "Connection pool is closed" }
         pendingAcquires.incrementAndGet()
         return try {
             withTimeout(configuration.acquireTimeout) {
                 semaphore.withPermit {
+                    check(!closed.get()) { "Connection pool is closed" }
                     val conn = getOrCreate()
                     try {
                         block(conn)

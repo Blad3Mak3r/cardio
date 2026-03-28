@@ -24,6 +24,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 import java.security.SecureRandom
 import javax.crypto.Mac
 import javax.crypto.SecretKeyFactory
@@ -73,7 +74,7 @@ class Connection private constructor(
     var secretKey: Int = 0
         private set
 
-    val serverParams: MutableMap<String, String> = mutableMapOf()
+    val serverParams: MutableMap<String, String> = ConcurrentHashMap()
 
     val isReady: Boolean
         get() = state == State.Ready
@@ -135,20 +136,11 @@ class Connection private constructor(
         }
     }
 
-    suspend fun beginTransaction() {
-        execute("BEGIN")
-        state = State.InTransaction
-    }
+    suspend fun beginTransaction()    { execute("BEGIN") }
 
-    suspend fun commitTransaction() {
-        execute("COMMIT")
-        state = State.Ready
-    }
+    suspend fun commitTransaction()   { execute("COMMIT") }
 
-    suspend fun rollbackTransaction() {
-        execute("ROLLBACK")
-        state = State.Ready
-    }
+    suspend fun rollbackTransaction() { execute("ROLLBACK") }
 
     suspend fun close() {
         val alreadyClosing = mutex.withLock {
@@ -252,12 +244,17 @@ class Connection private constructor(
     // Consume mensajes hasta ReadyForQuery — necesario tras un error
     // para dejar el canal en estado limpio
     private suspend fun drainUntilReady() {
-        while (true) {
-            val msg = PgMessageReader.read(readChannel)
-            if (msg is PgMessage.ReadyForQuery) {
-                updateTransactionState(msg.status)
-                break
+        try {
+            while (true) {
+                val msg = PgMessageReader.read(readChannel)
+                if (msg is PgMessage.ReadyForQuery) {
+                    updateTransactionState(msg.status)
+                    break
+                }
             }
+        } catch (e: Exception) {
+            state = State.Failed(e)
+            throw e
         }
     }
 
@@ -415,8 +412,10 @@ class Connection private constructor(
     private fun sha256(data: ByteArray): ByteArray =
         MessageDigest.getInstance("SHA-256").digest(data)
 
-    private fun xor(a: ByteArray, b: ByteArray): ByteArray =
-        ByteArray(a.size) { i -> (a[i].toInt() xor b[i].toInt()).toByte() }
+    private fun xor(a: ByteArray, b: ByteArray): ByteArray {
+        require(a.size == b.size) { "XOR: array sizes differ (${a.size} vs ${b.size})" }
+        return ByteArray(a.size) { i -> (a[i].toInt() xor b[i].toInt()).toByte() }
+    }
 
     private fun parseScramParams(input: String): Map<String, String> =
         input.split(",").associate { part ->
@@ -446,7 +445,9 @@ class Connection private constructor(
             )
 
             try {
-                conn.performStartup()
+                withTimeout(config.connectTimeoutMs) {
+                    conn.performStartup()
+                }
             } catch (e: Exception) {
                 runCatching { socket.close() }
                 runCatching { selectorManager.close() }
