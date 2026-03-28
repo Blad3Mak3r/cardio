@@ -8,7 +8,7 @@ plugins {
 dependencies {
     testImplementation(kotlin("test"))
 
-    api(libs.coroutines.core)
+    api(libs.kotlinx.coroutines.core)
     api(project(":cardio-protocol"))
 
     implementation(libs.slf4j.api)

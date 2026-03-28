@@ -6,7 +6,7 @@ plugins {
 }
 
 dependencies {
-    api(libs.coroutines.core)
+    api(libs.kotlinx.coroutines.core)
     api(libs.ktor.network)
     api(libs.kotlinx.datetime)
 

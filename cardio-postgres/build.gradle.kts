@@ -29,7 +29,7 @@ dependencies {
     api(libs.vertx.pg.client)
     implementation(project(":cardio-protocol"))
 
-    implementation(libs.coroutines.core)
+    implementation(libs.kotlinx.coroutines.core)
     implementation(libs.vertx.kotlin.coroutines)
 
     implementation(libs.slf4j.api)
