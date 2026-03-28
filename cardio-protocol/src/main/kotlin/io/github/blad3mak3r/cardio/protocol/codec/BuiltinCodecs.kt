@@ -62,6 +62,20 @@ object TextCodec : TypeCodec<String> {
     override fun decode(bytes: ByteArray?) = bytes?.toString(Charsets.UTF_8)
 }
 
+// CHARACTER VARYING / VARCHAR
+object VarcharCodec : TypeCodec<String> {
+    override val oid = PgOid.VARCHAR
+    override fun encode(value: String)     = value.toByteArray(Charsets.UTF_8)
+    override fun decode(bytes: ByteArray?) = bytes?.toString(Charsets.UTF_8)
+}
+
+// CHAR(n) / BPCHAR — fixed-length blank-padded character type
+object BpcharCodec : TypeCodec<String> {
+    override val oid = PgOid.BPCHAR
+    override fun encode(value: String)     = value.toByteArray(Charsets.UTF_8)
+    override fun decode(bytes: ByteArray?) = bytes?.toString(Charsets.UTF_8)
+}
+
 object BoolCodec : TypeCodec<Boolean> {
     override val oid = PgOid.BOOL
     override fun encode(value: Boolean): ByteArray = byteArrayOf(if (value) 1 else 0)
@@ -203,6 +217,7 @@ val Int8ArrayCodec          = ArrayCodec(PgOid.INT8_ARRAY,        Int8Codec)
 val Float4ArrayCodec        = ArrayCodec(PgOid.FLOAT4_ARRAY,      Float4Codec)
 val Float8ArrayCodec        = ArrayCodec(PgOid.FLOAT8_ARRAY,      Float8Codec)
 val TextArrayCodec          = ArrayCodec(PgOid.TEXT_ARRAY,        TextCodec)
+val VarcharArrayCodec       = ArrayCodec(PgOid.VARCHAR_ARRAY,     VarcharCodec)
 val BoolArrayCodec          = ArrayCodec(PgOid.BOOL_ARRAY,        BoolCodec)
 val TimestamptzArrayCodec   = ArrayCodec(PgOid.TIMESTAMPTZ_ARRAY, InstantCodec)
 
