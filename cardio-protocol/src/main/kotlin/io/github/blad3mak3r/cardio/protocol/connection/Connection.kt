@@ -494,6 +494,23 @@ class Connection private constructor(
     companion object {
         /** Shared, thread-safe random source — reused across all connections. */
         private val SECURE_RANDOM = SecureRandom()
+
+        /** IPv4 address pattern: four dot-separated octets, each in 0–255. */
+        private val IPV4_REGEX = Regex("""^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$""")
+
+        /** PostgreSQL SSLRequest wire-protocol bytes (length=8, code=0x04D2162F). */
+        private val SSL_REQUEST_BYTES = byteArrayOf(
+            0x00, 0x00, 0x00, 0x08,
+            0x04, 0xD2.toByte(), 0x16, 0x2F
+        )
+
+        /** Trust-all manager used by PREFER and REQUIRE — shared singleton, no state. */
+        private val TRUST_ALL_MANAGER: X509TrustManager = object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = Unit
+            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) = Unit
+            override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+        }
+
         suspend fun connect(
             config: Configuration,
             registry: TypeCodecRegistry = TypeCodecRegistry.Default,
@@ -501,10 +518,18 @@ class Connection private constructor(
         ): Connection {
             val selectorManager = SelectorManager(context)
 
-            val plainSocket = withTimeout(config.connectTimeoutMs) {
-                aSocket(selectorManager)
-                    .tcp()
-                    .connect(config.host, config.port) { keepAlive = true }
+            val plainSocket = try {
+                withTimeout(config.connectTimeoutMs) {
+                    aSocket(selectorManager)
+                        .tcp()
+                        .connect(config.host, config.port) { keepAlive = true }
+                }
+            } catch (e: CancellationException) {
+                runCatching { selectorManager.close() }
+                throw e
+            } catch (e: Exception) {
+                runCatching { selectorManager.close() }
+                throw PgConnectException(config.host, config.port, e)
             }
 
             val (activeSocket, readChannel, writeChannel) = try {
@@ -569,11 +594,7 @@ class Connection private constructor(
             val plainWrite = socket.openWriteChannel(autoFlush = false)
             val plainRead  = socket.openReadChannel()
 
-            val sslRequestBytes = byteArrayOf(
-                0x00, 0x00, 0x00, 0x08,         // Int32: total length = 8
-                0x04, 0xD2.toByte(), 0x16, 0x2F  // Int32: 80877103 = 0x04D2162F
-            )
-            plainWrite.writeFully(sslRequestBytes)
+            plainWrite.writeFully(SSL_REQUEST_BYTES)
             plainWrite.flush()
 
             val serverResponse = plainRead.readByte().toInt().toChar()
@@ -621,19 +642,12 @@ class Connection private constructor(
          */
         private fun buildTrustManager(config: Configuration): X509TrustManager =
             when (config.sslMode) {
-                SslMode.REQUIRE     -> trustAllManager()
+                SslMode.REQUIRE     -> TRUST_ALL_MANAGER
                 SslMode.VERIFY_CA   -> caVerifyManager(config.sslRootCert)
                 SslMode.VERIFY_FULL -> caAndHostnameVerifyManager(config.sslRootCert, config.host)
                 // PREFER: trust-all — server cert is not verified on opportunistic TLS.
-                else                -> trustAllManager()
+                else                -> TRUST_ALL_MANAGER
             }
-
-        /** A trust manager that accepts every certificate without any validation. */
-        private fun trustAllManager(): X509TrustManager = object : X509TrustManager {
-            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = Unit
-            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) = Unit
-            override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
-        }
 
         /**
          * A trust manager that validates the server's certificate chain against the
@@ -715,7 +729,7 @@ class Connection private constructor(
             } catch (e: Exception) {
                 throw SSLPeerUnverifiedException(
                     "Failed to read SAN extensions from certificate: ${e.message}"
-                )
+                ).also { it.initCause(e) }
             }
 
             if (sans != null) {
@@ -793,7 +807,7 @@ class Connection private constructor(
          * - IPv6: contains a colon, optionally surrounded by brackets (e.g. `[::1]`).
          */
         private fun isIpAddress(hostname: String): Boolean {
-            val ipv4Match = Regex("""^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$""").matchEntire(hostname)
+            val ipv4Match = IPV4_REGEX.matchEntire(hostname)
             if (ipv4Match != null) {
                 return ipv4Match.groupValues.drop(1).all { it.toInt() in 0..255 }
             }
@@ -833,7 +847,7 @@ class Connection private constructor(
         } catch (e: Exception) {
             throw SSLPeerUnverifiedException(
                 "Failed to parse certificate Distinguished Name: ${e.message}"
-            )
+            ).also { it.initCause(e) }
         }
     }
 }

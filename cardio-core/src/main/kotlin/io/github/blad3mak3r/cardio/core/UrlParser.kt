@@ -9,7 +9,7 @@ fun Cardio.Configuration.url(string: String) {
 
     fun parsePostgresUrl(url: URI) {
         val userInfo = url.userInfo ?: error("No user info found")
-        val (user, password) = userInfo.split(":")
+        val (user, password) = userInfo.split(":", limit = 2)
         this.username = user
         this.password = password
 
@@ -20,7 +20,7 @@ fun Cardio.Configuration.url(string: String) {
         this.database = path.substringAfter("/").ifBlank { error("No database name found in URL path") }
 
         val params = url.query?.split("&")?.associate { param ->
-            val (key, value) = param.split("=")
+            val (key, value) = param.split("=", limit = 2)
             key to value
         } ?: emptyMap()
 
@@ -35,8 +35,10 @@ fun Cardio.Configuration.url(string: String) {
                 "(valid: disable, prefer, require, verify-ca, verify-full)")
         }
 
-        params["sslRootCertPath"]?.let { path ->
-            this.sslRootCert = File(path).readBytes()
+        params["sslRootCertPath"]?.let { certPath ->
+            val file = File(certPath)
+            if (!file.isFile) error("sslRootCertPath '$certPath' does not exist or is not a file")
+            this.sslRootCert = file.readBytes()
         }
 
         params["applicationName"]?.let { this.applicationName = it }
