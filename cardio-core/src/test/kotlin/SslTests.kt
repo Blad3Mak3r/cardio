@@ -153,9 +153,39 @@ class SslTests {
         assert("VERIFY_FULL" in modes) { "VERIFY_FULL missing" }
     }
 
-    // ───────────────────────────────────────────────────────────────────
-    // DISABLE — plain connection (mirrors setUp in CardioTests)
-    // ───────────────────────────────────────────────────────────────────
+    @Test
+    fun `url parser - no host throws`() {
+        assertThrows<IllegalStateException> {
+            Cardio.Configuration().apply {
+                // Single-slash path → no authority → null host
+                url("postgres:/test")
+            }
+        }
+    }
+
+    @Test
+    fun `VERIFY_CA with bad cert bytes fails when server has no SSL`() {
+        // With a non-SSL server, the server returns 'N', so PgSslException is thrown before
+        // the cert bytes are ever parsed. Against a real TLS server, a malformed cert would
+        // also yield PgSslException from caVerifyManager. Either way the error type is correct.
+        val ex = assertThrows<Exception> {
+            runBlocking {
+                Cardio.new {
+                    host = "localhost"; port = 5432
+                    database = "test"; username = "test"; password = "test"
+                    ssl = Connection.SslMode.VERIFY_CA
+                    sslRootCert = byteArrayOf(0x00, 0x01, 0x02) // not valid PEM
+                    minSize = 1; maxSize = 1
+                }
+            }
+        }
+        val root = generateSequence<Throwable>(ex) { it.cause }
+        assert(root.any { it is PgSslException }) {
+            "Expected PgSslException in cause chain, got: ${ex::class.simpleName} — ${ex.message}"
+        }
+    }
+
+
 
     @Test
     fun `DISABLE mode connects and queries`() = runBlocking {

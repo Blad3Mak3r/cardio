@@ -13,7 +13,7 @@ fun Cardio.Configuration.url(string: String) {
         this.username = user
         this.password = password
 
-        this.host = url.host
+        this.host = url.host ?: error("No host found in URL (did you use postgres://host/db syntax?)")
         if (url.port >= 0) this.port = url.port
 
         val path = url.path
@@ -40,7 +40,11 @@ fun Cardio.Configuration.url(string: String) {
         params["sslRootCertPath"]?.let { certPath ->
             val file = File(certPath)
             if (!file.isFile) error("sslRootCertPath '$certPath' does not exist or is not a file")
-            this.sslRootCert = file.readBytes()
+            this.sslRootCert = try {
+                file.readBytes()
+            } catch (e: Exception) {
+                error("sslRootCertPath '$certPath' could not be read: ${e.message}")
+            }
         }
 
         params["applicationName"]?.let { this.applicationName = it }

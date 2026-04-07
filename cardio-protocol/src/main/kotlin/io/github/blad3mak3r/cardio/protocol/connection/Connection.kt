@@ -617,7 +617,10 @@ class Connection private constructor(
                     val trustManager = buildTrustManager(config)
                     val tlsSocket = socket.tls(context) {
                         this.trustManager = trustManager
-                        this.serverName   = config.host
+                        // SNI must not be set for IP address literals (RFC 6066 §3).
+                        if (!isIpAddress(config.host)) {
+                            this.serverName = config.host
+                        }
                     }
                     Triple(
                         tlsSocket,
@@ -673,8 +676,15 @@ class Connection private constructor(
         private fun caVerifyManager(sslRootCert: ByteArray?): X509TrustManager {
             val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
             if (sslRootCert != null) {
-                val cf   = CertificateFactory.getInstance("X.509")
-                val certs = cf.generateCertificates(ByteArrayInputStream(sslRootCert))
+                val cf = CertificateFactory.getInstance("X.509")
+                val certs = try {
+                    cf.generateCertificates(ByteArrayInputStream(sslRootCert))
+                } catch (e: CertificateException) {
+                    throw PgSslException(
+                        "Failed to parse sslRootCert: the data is not valid PEM/DER X.509 (${e.message})", e
+                    )
+                }
+                if (certs.isEmpty()) throw PgSslException("sslRootCert contains no certificates")
                 val ks   = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
                     load(null, null)
                     certs.forEachIndexed { index, cert ->
