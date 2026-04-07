@@ -70,6 +70,32 @@ class SslTests {
     }
 
     @Test
+    fun `url parser - no port defaults to 5432`() {
+        val cfg = Cardio.Configuration().apply {
+            url("postgres://test:test@localhost/test")
+        }
+        assertEquals(5432, cfg.port)
+    }
+
+    @Test
+    fun `url parser - password with colon is preserved`() {
+        val cfg = Cardio.Configuration().apply {
+            url("postgres://test:pass:word@localhost:5432/test")
+        }
+        assertEquals("pass:word", cfg.password)
+    }
+
+    @Test
+    fun `url parser - query param without value does not throw`() {
+        // Boolean-style flag params (no = sign) should not crash the parser
+        val cfg = Cardio.Configuration().apply {
+            url("postgres://test:test@localhost:5432/test?sslMode=prefer&flag")
+        }
+        assertEquals(Connection.SslMode.PREFER, cfg.ssl)
+    }
+
+
+    @Test
     fun `url parser - missing sslMode defaults to DISABLE`() {
         val cfg = Cardio.Configuration().apply {
             url("postgres://test:test@localhost:5432/test")

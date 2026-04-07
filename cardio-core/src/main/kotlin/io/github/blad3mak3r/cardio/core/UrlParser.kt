@@ -14,15 +14,17 @@ fun Cardio.Configuration.url(string: String) {
         this.password = password
 
         this.host = url.host
-        this.port = url.port
+        if (url.port >= 0) this.port = url.port
 
         val path = url.path
         this.database = path.substringAfter("/").ifBlank { error("No database name found in URL path") }
 
-        val params = url.query?.split("&")?.associate { param ->
-            val (key, value) = param.split("=", limit = 2)
-            key to value
-        } ?: emptyMap()
+        val params = url.query?.split("&")
+            ?.filter { it.isNotEmpty() }
+            ?.associate { param ->
+                val eq = param.indexOf('=')
+                if (eq == -1) param to "" else param.substring(0, eq) to param.substring(eq + 1)
+            } ?: emptyMap()
 
         this.ssl = when (val sslString = params["sslMode"]?.lowercase()) {
             "require"     -> Connection.SslMode.REQUIRE

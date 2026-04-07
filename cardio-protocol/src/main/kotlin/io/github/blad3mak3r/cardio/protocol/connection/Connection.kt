@@ -23,6 +23,7 @@ import io.ktor.utils.io.readByte
 import io.ktor.utils.io.writeFully
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
@@ -524,6 +525,9 @@ class Connection private constructor(
                         .tcp()
                         .connect(config.host, config.port) { keepAlive = true }
                 }
+            } catch (e: TimeoutCancellationException) {
+                runCatching { selectorManager.close() }
+                throw PgConnectException(config.host, config.port, e)
             } catch (e: CancellationException) {
                 runCatching { selectorManager.close() }
                 throw e
@@ -536,6 +540,10 @@ class Connection private constructor(
                 withTimeout(config.connectTimeoutMs) {
                     negotiateSsl(plainSocket, config, context)
                 }
+            } catch (e: TimeoutCancellationException) {
+                runCatching { plainSocket.close() }
+                runCatching { selectorManager.close() }
+                throw PgConnectException(config.host, config.port, e)
             } catch (e: CancellationException) {
                 runCatching { plainSocket.close() }
                 runCatching { selectorManager.close() }
@@ -554,6 +562,10 @@ class Connection private constructor(
                 withTimeout(config.connectTimeoutMs) {
                     conn.performStartup()
                 }
+            } catch (e: TimeoutCancellationException) {
+                runCatching { activeSocket.close() }
+                runCatching { selectorManager.close() }
+                throw PgConnectException(config.host, config.port, e)
             } catch (e: CancellationException) {
                 runCatching { activeSocket.close() }
                 runCatching { selectorManager.close() }
@@ -735,7 +747,8 @@ class Connection private constructor(
             if (sans != null) {
                 if (ipConn) {
                     // RFC 2818 §3.1: for IP addresses only iPAddress SANs (type 7) apply.
-                    val ipSans = sans.filter { it[0] as Int == 7 }.map { it[1] as String }
+                    val ipSans = sans.filter { (it[0] as? Int) == 7 }
+                        .mapNotNull { it[1] as? String }
                     if (ipSans.isNotEmpty()) {
                         if (ipSans.any { ipAddressesMatch(hostname, it) }) return
                         throw SSLPeerUnverifiedException(
@@ -749,8 +762,8 @@ class Connection private constructor(
                     )
                 } else {
                     val dnsNames = sans
-                        .filter { it[0] as Int == 2 } // 2 = dNSName
-                        .map    { it[1] as String }
+                        .filter { (it[0] as? Int) == 2 } // 2 = dNSName
+                        .mapNotNull { it[1] as? String }
 
                     if (dnsNames.isNotEmpty()) {
                         if (dnsNames.any { hostnameMatches(hostname, it) }) return
