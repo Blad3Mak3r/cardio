@@ -614,6 +614,10 @@ class Connection private constructor(
             return when (serverResponse) {
                 'S' -> {
                     // Server accepted SSL — perform the TLS handshake.
+                    // plainRead/plainWrite are abandoned here: they hold no OS resources (the
+                    // socket owns the FD). Explicitly closing them risks a TCP half-close before
+                    // the TLS handshake; socket.close() in the caller's error paths is the
+                    // single resource-release point.
                     val trustManager = buildTrustManager(config)
                     val tlsSocket = socket.tls(context) {
                         this.trustManager = trustManager
