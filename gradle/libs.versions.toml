@@ -19,6 +19,7 @@ vertx-pg-client = { module = "io.vertx:vertx-pg-client", version.ref = "vertx" }
 vertx-kotlin-coroutines = { module = "io.vertx:vertx-lang-kotlin-coroutines", version.ref = "vertx" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 ktor-network = { module = "io.ktor:ktor-network", version.ref = "ktor" }
+ktor-network-tls = { module = "io.ktor:ktor-network-tls", version.ref = "ktor" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

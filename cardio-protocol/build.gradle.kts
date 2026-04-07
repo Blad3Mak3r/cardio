@@ -8,6 +8,7 @@ plugins {
 dependencies {
     api(libs.kotlinx.coroutines.core)
     api(libs.ktor.network)
+    api(libs.ktor.network.tls)
     api(libs.kotlinx.datetime)
 
     implementation(libs.slf4j.api)

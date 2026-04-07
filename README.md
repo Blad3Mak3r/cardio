@@ -27,7 +27,7 @@ Cardio is a lightweight Kotlin library for non-blocking PostgreSQL access using 
   - [Supported types](#supported-types)
   - [Custom codecs](#custom-codecs)
   - [Pool statistics](#pool-statistics)
-- [SSL](#ssl)
+- [SSL / TLS](#ssl--tls)
 - [Building](#building)
 
 ---
@@ -47,7 +47,7 @@ Cardio is a lightweight Kotlin library for non-blocking PostgreSQL access using 
 - 🏛️ **Repository pattern** — extend `CardioRepository` to encapsulate all data-access logic cleanly.
 - 🔀 **Transaction support** — first-class `inTransaction` with automatic rollback on failure.
 - 🪶 **Minimal footprint** — runtime dependencies are only `ktor-network` and `kotlinx-coroutines-core`.
-- 🔑 **SSL support** — configurable SSL mode (`DISABLE`, `PREFER`, `REQUIRE`).
+- 🔑 **Full TLS/SSL support** — five SSL modes (`DISABLE`, `PREFER`, `REQUIRE`, `VERIFY_CA`, `VERIFY_FULL`) with proper certificate chain and hostname verification (RFC 2818 / RFC 6125).
 - 📝 **Raw SQL** — plain PostgreSQL with native positional parameters (`$1`, `$2`, …); no ORM magic, no DSL.
 
 ---
@@ -170,10 +170,10 @@ val db = Cardio.new {
 
 The URL format is `postgres[ql]://username:password@host:port/database`. You can also pass optional query parameters:
 
-| Parameter | Values                                  | Default    |
-|---|-----------------------------------------|------------|
-| `sslMode` | `disable` `prefer` `require` |  `disable` |
-| `applicationName` | any string                              | —          |
+| Parameter | Values | Default |
+|---|---|---|
+| `sslMode` | `disable` `prefer` `require` `verify-ca` `verify-full` | `disable` |
+| `applicationName` | any string | — |
 
 ```kotlin
 val db = Cardio.new {
@@ -388,12 +388,128 @@ println("Total acquired: ${stats.totalAcquired}, errors: ${stats.totalErrors}")
 
 ---
 
-## SSL
+## SSL / TLS
+
+Cardio implements the PostgreSQL SSLRequest wire-protocol handshake and upgrades the TCP
+connection to TLS via `ktor-network-tls`. Five modes are supported, matching the standard
+`sslmode` semantics from `libpq`:
+
+| Mode | Server SSL required | Certificate verified | Hostname verified |
+|---|:---:|:---:|:---:|
+| `DISABLE` | — | — | — |
+| `PREFER` | — | — | — |
+| `REQUIRE` | ✅ | — | — |
+| `VERIFY_CA` | ✅ | ✅ | — |
+| `VERIFY_FULL` | ✅ | ✅ | ✅ |
+
+### Modes
+
+- **`DISABLE`** — Plain TCP; no TLS handshake is performed.
+- **`PREFER`** — Attempt TLS first; fall back silently to plain TCP if the server declines. No certificate validation (trust-all).
+- **`REQUIRE`** — TLS is mandatory; throws `PgSslException` if the server does not support it. Server certificate is **not** verified (trust-all).
+- **`VERIFY_CA`** — TLS is mandatory; the server certificate must be signed by the supplied CA (or the JVM default trust store when no CA is provided). Hostname is not checked.
+- **`VERIFY_FULL`** — TLS is mandatory; the server certificate must be signed by the CA **and** the certificate's hostname must match the connection host (Subject Alternative Names checked first, CN as fallback per RFC 2818). For connections to IP addresses only iPAddress SANs are authoritative; CN fallback is prohibited per RFC 2818 §3.1.
+
+### Configuration
+
+#### Programmatic
 
 ```kotlin
+import io.github.blad3mak3r.cardio.protocol.connection.Connection
+import java.io.File
+
+// Plain TCP (default)
 val db = Cardio.new {
-    // ...
-    ssl = Connection.SslMode.REQUIRE  // DISABLE | PREFER | REQUIRE
+    host = "localhost"; database = "mydb"; username = "user"; password = "secret"
+    ssl = Connection.SslMode.DISABLE
+}
+
+// Opportunistic TLS — falls back to plain if server has no SSL
+val db = Cardio.new {
+    host = "db.example.com"; database = "mydb"; username = "user"; password = "secret"
+    ssl = Connection.SslMode.PREFER
+}
+
+// Require TLS, trust any certificate (no CA validation)
+val db = Cardio.new {
+    host = "db.example.com"; database = "mydb"; username = "user"; password = "secret"
+    ssl = Connection.SslMode.REQUIRE
+}
+
+// Require TLS + verify certificate against a custom CA
+val caPem = File("/etc/ssl/pg-ca.crt").readBytes()
+
+val db = Cardio.new {
+    host = "db.example.com"; database = "mydb"; username = "user"; password = "secret"
+    ssl        = Connection.SslMode.VERIFY_CA
+    sslRootCert = caPem               // PEM-encoded CA certificate (or bundle)
+}
+
+// Require TLS + verify certificate AND hostname (recommended for production)
+val db = Cardio.new {
+    host = "db.example.com"; database = "mydb"; username = "user"; password = "secret"
+    ssl         = Connection.SslMode.VERIFY_FULL
+    sslRootCert = caPem               // PEM-encoded CA certificate (or bundle)
+}
+```
+
+#### Via URL
+
+Pass `sslmode` as a query parameter (case-insensitive; libpq-style lowercase and camelCase are both accepted).
+
+```kotlin
+// PREFER
+val db = Cardio.new {
+    url("postgres://user:secret@db.example.com:5432/mydb?sslmode=prefer")
+}
+
+// VERIFY_FULL — CA cert supplied via query parameter
+val db = Cardio.new {
+    url("postgres://user:secret@db.example.com:5432/mydb?sslmode=verify-full&sslrootcertpath=/etc/ssl/pg-ca.crt")
+}
+
+// VERIFY_FULL — CA cert supplied programmatically
+val db = Cardio.new {
+    url("postgres://user:secret@db.example.com:5432/mydb?sslmode=verify-full")
+    sslRootCert = File("/etc/ssl/pg-ca.crt").readBytes()
+}
+```
+
+Valid `sslmode` values: `disable`, `prefer`, `require`, `verify-ca`, `verify-full`.
+
+### `sslRootCert`
+
+`sslRootCert` accepts a **PEM-encoded** CA certificate as a `ByteArray`. Multi-certificate
+PEM bundles (e.g. an intermediate + root CA chain) are fully supported — all certificates
+in the file are added to the in-memory trust store.
+
+```kotlin
+sslRootCert = File("/etc/ssl/certs/ca-bundle.pem").readBytes()
+```
+
+When `sslRootCert` is `null` the JVM's default trust store is used (applies to
+`VERIFY_CA` and `VERIFY_FULL` only; ignored for the other modes).
+
+### Error handling
+
+When SSL is required but the server does not support it, a
+`io.github.blad3mak3r.cardio.protocol.connection.PgSslException` is thrown (wrapped in a
+`PgConnectException`):
+
+```kotlin
+import io.github.blad3mak3r.cardio.protocol.connection.PgConnectException
+import io.github.blad3mak3r.cardio.protocol.connection.PgSslException
+
+try {
+    val db = Cardio.new {
+        host = "localhost"; database = "mydb"; username = "user"; password = "secret"
+        ssl = Connection.SslMode.REQUIRE
+    }
+} catch (e: PgConnectException) {
+    val cause = generateSequence<Throwable>(e) { it.cause }.firstOrNull { it is PgSslException }
+    if (cause != null) {
+        println("Server does not support SSL: ${cause.message}")
+    }
 }
 ```
 
