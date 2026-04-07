@@ -1,7 +1,6 @@
 import io.github.blad3mak3r.cardio.core.Cardio
 import io.github.blad3mak3r.cardio.core.url
 import io.github.blad3mak3r.cardio.protocol.connection.Connection
-import io.github.blad3mak3r.cardio.protocol.connection.PgConnectException
 import io.github.blad3mak3r.cardio.protocol.connection.PgSslException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll

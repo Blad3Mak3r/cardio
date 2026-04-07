@@ -123,12 +123,12 @@ Configure via `Cardio.Configuration`:
 ```kotlin
 val db = Cardio.new {
     host = "db.example.com"
-    sslMode = Connection.SslMode.VERIFY_FULL
+    ssl = Connection.SslMode.VERIFY_FULL
     sslRootCert = File("ca.pem").readBytes()   // PEM-encoded CA cert
 }
 ```
 
-Or via connection URL (`sslmode` / `sslrootcert` / `sslrootcertpath` query parameters):
+Or via connection URL (`sslmode` / `sslrootcert` / `sslrootcertpath` query parameters — case-insensitive):
 ```
 postgres://user:pass@host/db?sslmode=verify-full&sslrootcertpath=/etc/ssl/ca.pem
 ```

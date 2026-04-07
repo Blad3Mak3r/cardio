@@ -416,6 +416,7 @@ connection to TLS via `ktor-network-tls`. Five modes are supported, matching the
 
 ```kotlin
 import io.github.blad3mak3r.cardio.protocol.connection.Connection
+import java.io.File
 
 // Plain TCP (default)
 val db = Cardio.new {
@@ -448,28 +449,33 @@ val db = Cardio.new {
 val db = Cardio.new {
     host = "db.example.com"; database = "mydb"; username = "user"; password = "secret"
     ssl         = Connection.SslMode.VERIFY_FULL
-    sslRootCert = caPem               // null = use JVM default trust store
+    sslRootCert = caPem               // PEM-encoded CA certificate (or bundle)
 }
 ```
 
 #### Via URL
 
-Pass `sslMode` as a query parameter. The value is case-insensitive.
+Pass `sslmode` as a query parameter (case-insensitive; libpq-style lowercase and camelCase are both accepted).
 
 ```kotlin
 // PREFER
 val db = Cardio.new {
-    url("postgres://user:secret@db.example.com:5432/mydb?sslMode=prefer")
+    url("postgres://user:secret@db.example.com:5432/mydb?sslmode=prefer")
 }
 
-// VERIFY_FULL (custom CA must be set programmatically)
+// VERIFY_FULL — CA cert supplied via query parameter
 val db = Cardio.new {
-    url("postgres://user:secret@db.example.com:5432/mydb?sslMode=verify-full")
+    url("postgres://user:secret@db.example.com:5432/mydb?sslmode=verify-full&sslrootcertpath=/etc/ssl/pg-ca.crt")
+}
+
+// VERIFY_FULL — CA cert supplied programmatically
+val db = Cardio.new {
+    url("postgres://user:secret@db.example.com:5432/mydb?sslmode=verify-full")
     sslRootCert = File("/etc/ssl/pg-ca.crt").readBytes()
 }
 ```
 
-Valid `sslMode` values: `disable`, `prefer`, `require`, `verify-ca`, `verify-full`.
+Valid `sslmode` values: `disable`, `prefer`, `require`, `verify-ca`, `verify-full`.
 
 ### `sslRootCert`
 

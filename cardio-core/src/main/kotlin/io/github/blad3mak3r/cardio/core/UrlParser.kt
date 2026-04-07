@@ -19,35 +19,38 @@ fun Cardio.Configuration.url(string: String) {
         val path = url.path
         this.database = path.substringAfter("/").ifBlank { error("No database name found in URL path") }
 
+        // Keys are lowercased so that both libpq-style ("sslmode") and camelCase ("sslMode")
+        // parameter names are accepted interchangeably.
         val params = url.query?.split("&")
             ?.filter { it.isNotEmpty() }
             ?.associate { param ->
                 val eq = param.indexOf('=')
-                if (eq == -1) param to "" else param.substring(0, eq) to param.substring(eq + 1)
+                if (eq == -1) param.lowercase() to ""
+                else param.substring(0, eq).lowercase() to param.substring(eq + 1)
             } ?: emptyMap()
 
-        this.ssl = when (val sslString = params["sslMode"]?.lowercase()) {
+        this.ssl = when (val sslString = params["sslmode"]?.lowercase()) {
             "require"     -> Connection.SslMode.REQUIRE
             "prefer"      -> Connection.SslMode.PREFER
             "disable"     -> Connection.SslMode.DISABLE
             "verify-ca"   -> Connection.SslMode.VERIFY_CA
             "verify-full" -> Connection.SslMode.VERIFY_FULL
             null          -> Connection.SslMode.DISABLE
-            else -> error("Invalid sslMode value: $sslString " +
+            else -> error("Invalid sslmode value: $sslString " +
                 "(valid: disable, prefer, require, verify-ca, verify-full)")
         }
 
-        params["sslRootCertPath"]?.let { certPath ->
+        params["sslrootcertpath"]?.let { certPath ->
             val file = File(certPath)
-            if (!file.isFile) error("sslRootCertPath '$certPath' does not exist or is not a file")
+            if (!file.isFile) error("sslrootcertpath '$certPath' does not exist or is not a file")
             this.sslRootCert = try {
                 file.readBytes()
             } catch (e: Exception) {
-                error("sslRootCertPath '$certPath' could not be read: ${e.message}")
+                throw IllegalStateException("sslrootcertpath '$certPath' could not be read: ${e.message}", e)
             }
         }
 
-        params["applicationName"]?.let { this.applicationName = it }
+        params["applicationname"]?.let { this.applicationName = it }
     }
 
     // TODO: unix socket connection

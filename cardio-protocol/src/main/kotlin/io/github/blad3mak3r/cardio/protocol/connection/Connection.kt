@@ -848,9 +848,15 @@ class Connection private constructor(
          * Delegates to [InetAddress] so that different textual representations of the
          * same IPv6 address (e.g. `::1` vs `0:0:0:0:0:0:0:1`) compare as equal.
          * For IP literal strings [InetAddress.getByName] never performs DNS lookups.
+         *
+         * Bracketed IPv6 literals (e.g. `[::1]`) are normalised first because
+         * [InetAddress.getByName] expects the raw address literal, not the URI-style
+         * bracketed form.
          */
         private fun ipAddressesMatch(host: String, certIp: String): Boolean = try {
-            InetAddress.getByName(host) == InetAddress.getByName(certIp)
+            val normalizedHost   = host.removePrefix("[").removeSuffix("]")
+            val normalizedCertIp = certIp.removePrefix("[").removeSuffix("]")
+            InetAddress.getByName(normalizedHost) == InetAddress.getByName(normalizedCertIp)
         } catch (_: Exception) {
             false
         }
