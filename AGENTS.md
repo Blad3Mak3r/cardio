@@ -56,7 +56,7 @@ val db = Cardio.create<MyDb> { connectOptions = PgConnectOptions().apply { ... }
 val db = Cardio.create<MyDb> { url("postgres://u:p@localhost:5432/mydb") }
 ```
 
-Other notable `Cardio.Configuration` fields: `maxSize` (default 10), `minSize` (default 2), `acquireTimeout` (default 30s), `idleTimeout` (default 600s), `applicationName`, `ssl` (`Connection.SslMode.DISABLE` | `PREFER` | `REQUIRE`).
+Other notable `Cardio.Configuration` fields: `maxSize` (default 10), `minSize` (default 2), `acquireTimeout` (default 30s), `idleTimeout` (default 600s), `applicationName`, `ssl` (`Connection.SslMode.DISABLE` | `PREFER` | `REQUIRE` | `VERIFY_CA` | `VERIFY_FULL`), `sslRootCert: ByteArray?` (PEM-encoded CA certificate for `VERIFY_CA`/`VERIFY_FULL`).
 
 ### Transactions
 ```kotlin
@@ -108,12 +108,50 @@ val user = CardioSerializationFormat.decodeFromRow<User>(row)
 val user: User? = db.queryOne<User>("SELECT id, name FROM users WHERE id = $1", 42)
 ```
 
+### SSL/TLS (`cardio-protocol`)
+All five PostgreSQL SSL modes are supported:
+
+| Mode | Behaviour |
+|------|-----------|
+| `DISABLE` | Never use TLS. |
+| `PREFER` | Request TLS; fall back to plain-text if server declines. |
+| `REQUIRE` | Require TLS; reject the connection if server declines. No certificate validation. |
+| `VERIFY_CA` | Require TLS + validate server certificate against `sslRootCert`. |
+| `VERIFY_FULL` | Require TLS + validate certificate chain AND verify hostname/IP against SANs. |
+
+Configure via `Cardio.Configuration`:
+```kotlin
+val db = Cardio.new {
+    host = "db.example.com"
+    sslMode = Connection.SslMode.VERIFY_FULL
+    sslRootCert = File("ca.pem").readBytes()   // PEM-encoded CA cert
+}
+```
+
+Or via connection URL (`sslmode` / `sslrootcert` / `sslrootcertpath` query parameters):
+```
+postgres://user:pass@host/db?sslmode=verify-full&sslrootcertpath=/etc/ssl/ca.pem
+```
+
+`PgSslException` (extends `Exception`) is thrown when TLS negotiation fails (server declined a required mode, certificate validation failed, or hostname mismatch).
+
+#### SSL implementation details
+- **Handshake**: SSLRequest message (`[0x00,0x00,0x00,0x08, 0x04,0xD2,0x16,0x2F]`) is sent before `StartupMessage`; server replies `'S'` (accepted) or `'N'` (declined).
+- **TLS upgrade**: `socket.tls(coroutineContext) { ... }` from `ktor-network-tls`; a new `ByteReadChannel`/`ByteWriteChannel` pair is opened on the upgraded socket.
+- **SNI**: Set to the server hostname; **not** set for IP address literals (RFC 6066 §3).
+- **Trust managers**: `REQUIRE`/`PREFER` use a stateless `TRUST_ALL_MANAGER` singleton. `VERIFY_CA` chains against the supplied CA. `VERIFY_FULL` additionally verifies SANs (dNSName + iPAddress) with wildcard and RFC 2818 hostname matching; `extractCN()` uses `LdapName` for RFC 2253 DN parsing.
+- **Thread safety**: `SECURE_RANDOM`, `IPV4_REGEX`, `SSL_REQUEST_BYTES`, and `TRUST_ALL_MANAGER` are companion `val`s — allocated once, shared safely across all connections.
+- **`TimeoutCancellationException`**: All three `withTimeout` blocks in `connect()` catch `TimeoutCancellationException` **before** `CancellationException` to avoid propagating a connection timeout as a coroutine scope cancellation.
+
 ## Key Files
-- `cardio-protocol/…/connection/Connection.kt` — full PG wire protocol (auth, SCRAM-SHA-256, extended query)
+- `cardio-protocol/…/connection/Connection.kt` — full PG wire protocol (auth, SCRAM-SHA-256, extended query, SSL/TLS)
+- `cardio-protocol/…/connection/PgSslException.kt` — SSL-specific exception
 - `cardio-protocol/…/connection/ConnectionPool.kt` — coroutine-based pool (Semaphore + Channel)
 - `cardio-protocol/…/codec/BuiltinCodecs.kt` — all binary codecs
 - `cardio-protocol/…/codec/Param.kt` — `Param` wrapper for explicit codec overrides on query parameters
-- `cardio-core/…/Cardio.kt` — public API entry point
+- `cardio-core/…/Cardio.kt` — public API entry point (`sslMode`, `sslRootCert` in `Configuration`)
+- `cardio-core/…/UrlParser.kt` — URL parser (`sslmode`, `sslrootcert`, `sslrootcertpath` params)
+- `cardio-core/…/SslTests.kt` — 31 SSL/TLS tests
 - `cardio-postgres/…/ConnectionUrl.kt` — URL parser for `url("postgres://…")`
 - `gradle/libs.versions.toml` — all version pins
 
