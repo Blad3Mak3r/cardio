@@ -19,6 +19,13 @@ open class Cardio(
         var username: String        = ""
         var password: String        = ""
         var ssl: Connection.SslMode = Connection.SslMode.DISABLE
+        /**
+         * PEM-encoded CA certificate used for [Connection.SslMode.VERIFY_CA] and
+         * [Connection.SslMode.VERIFY_FULL].  When `null` the JVM's default trust store
+         * is used.  Ignored for [Connection.SslMode.DISABLE], [Connection.SslMode.PREFER],
+         * and [Connection.SslMode.REQUIRE].
+         */
+        var sslRootCert: ByteArray? = null
         var applicationName: String = "cardio-pg-client"
         var maxSize: Int            = 10
         var minSize: Int            = 2
@@ -39,6 +46,7 @@ open class Cardio(
                 username        = username.ifBlank { error("Cardio: username must not be blank") },
                 password        = password,
                 sslMode         = ssl,
+                sslRootCert     = sslRootCert,
                 applicationName = applicationName,
             ),
             maxSize        = maxSize,

@@ -24,11 +24,14 @@ fun Cardio.Configuration.url(string: String) {
         } ?: emptyMap()
 
         this.ssl = when (val sslString = params["sslMode"]?.lowercase()) {
-            "require" -> Connection.SslMode.REQUIRE
-            "prefer" -> Connection.SslMode.PREFER
-            "disable" -> Connection.SslMode.DISABLE
-            null -> Connection.SslMode.DISABLE
-            else -> error("Invalid sslMode value: $sslString (valid: ${Connection.SslMode.entries.joinToString(", ")})")
+            "require"     -> Connection.SslMode.REQUIRE
+            "prefer"      -> Connection.SslMode.PREFER
+            "disable"     -> Connection.SslMode.DISABLE
+            "verify-ca"   -> Connection.SslMode.VERIFY_CA
+            "verify-full" -> Connection.SslMode.VERIFY_FULL
+            null          -> Connection.SslMode.DISABLE
+            else -> error("Invalid sslMode value: $sslString " +
+                "(valid: disable, prefer, require, verify-ca, verify-full)")
         }
 
         params["applicationName"]?.let { this.applicationName = it }
