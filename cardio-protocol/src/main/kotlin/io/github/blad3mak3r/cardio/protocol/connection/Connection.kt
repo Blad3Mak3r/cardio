@@ -21,6 +21,7 @@ import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.readByte
 import io.ktor.utils.io.writeFully
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -30,6 +31,7 @@ import java.net.InetAddress
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.security.cert.CertificateException
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import javax.crypto.Mac
@@ -509,6 +511,10 @@ class Connection private constructor(
                 withTimeout(config.connectTimeoutMs) {
                     negotiateSsl(plainSocket, config, context)
                 }
+            } catch (e: CancellationException) {
+                runCatching { plainSocket.close() }
+                runCatching { selectorManager.close() }
+                throw e
             } catch (e: Exception) {
                 runCatching { plainSocket.close() }
                 runCatching { selectorManager.close() }
@@ -523,6 +529,10 @@ class Connection private constructor(
                 withTimeout(config.connectTimeoutMs) {
                     conn.performStartup()
                 }
+            } catch (e: CancellationException) {
+                runCatching { activeSocket.close() }
+                runCatching { selectorManager.close() }
+                throw e
             } catch (e: Exception) {
                 runCatching { activeSocket.close() }
                 runCatching { selectorManager.close() }
@@ -560,8 +570,8 @@ class Connection private constructor(
             val plainRead  = socket.openReadChannel()
 
             val sslRequestBytes = byteArrayOf(
-                0, 0, 0, 8,          // Int32: total length = 8
-                4, -46, 22, 47       // Int32: 80877103 = 0x04D2162F
+                0x00, 0x00, 0x00, 0x08,         // Int32: total length = 8
+                0x04, 0xD2.toByte(), 0x16, 0x2F  // Int32: 80877103 = 0x04D2162F
             )
             plainWrite.writeFully(sslRequestBytes)
             plainWrite.flush()
@@ -673,7 +683,11 @@ class Connection private constructor(
 
                 override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
                     inner.checkServerTrusted(chain, authType)
-                    verifyHostname(hostname, chain[0])
+                    try {
+                        verifyHostname(hostname, chain[0])
+                    } catch (e: SSLPeerUnverifiedException) {
+                        throw CertificateException("Hostname verification failed: ${e.message}", e)
+                    }
                 }
 
                 override fun getAcceptedIssuers(): Array<X509Certificate> = inner.getAcceptedIssuers()
@@ -767,11 +781,14 @@ class Connection private constructor(
          * Returns `true` when [hostname] appears to be an IP address literal (IPv4 or IPv6).
          *
          * Detection is purely lexical to avoid unintended DNS resolution:
-         * - IPv4: four dot-separated numeric groups (e.g. `192.168.1.1`).
+         * - IPv4: four dot-separated numeric groups, each octet in 0–255 (e.g. `192.168.1.1`).
          * - IPv6: contains a colon, optionally surrounded by brackets (e.g. `[::1]`).
          */
         private fun isIpAddress(hostname: String): Boolean {
-            if (hostname.matches(Regex("""\d{1,3}(\.\d{1,3}){3}"""))) return true
+            val ipv4Match = Regex("""^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$""").matchEntire(hostname)
+            if (ipv4Match != null) {
+                return ipv4Match.groupValues.drop(1).all { it.toInt() in 0..255 }
+            }
             val stripped = hostname.removePrefix("[").removeSuffix("]")
             return ':' in stripped
         }
