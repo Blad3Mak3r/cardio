@@ -3,6 +3,8 @@ import io.github.blad3mak3r.cardio.core.url
 import io.github.blad3mak3r.cardio.protocol.connection.Connection
 import io.github.blad3mak3r.cardio.protocol.connection.PgConnectException
 import io.github.blad3mak3r.cardio.protocol.connection.PgSslException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
@@ -272,5 +274,30 @@ class SslTests {
         }
         val poolCfg = cfg.buildPoolConfig()
         assertNull(poolCfg.connect.sslRootCert)
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // Concurrency — multiple simultaneous connections via PREFER
+    // ───────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `concurrent PREFER connections produce correct results`() = runBlocking {
+        val client = Cardio.new {
+            host = "localhost"; port = 5432
+            database = "test"; username = "test"; password = "test"
+            ssl = Connection.SslMode.PREFER
+            minSize = 2; maxSize = 8
+        }
+        try {
+            val deferred = (1..8).map { n ->
+                async { client.query("SELECT $n") { it.get<Int>(0) } }
+            }
+            val results = deferred.awaitAll()
+            results.forEachIndexed { index, result ->
+                assertEquals(listOf(index + 1), result)
+            }
+        } finally {
+            client.close()
+        }
     }
 }

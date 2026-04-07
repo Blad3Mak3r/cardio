@@ -1,6 +1,7 @@
 package io.github.blad3mak3r.cardio.core
 
 import io.github.blad3mak3r.cardio.protocol.connection.Connection
+import java.io.File
 import java.net.URI
 
 fun Cardio.Configuration.url(string: String) {
@@ -32,6 +33,10 @@ fun Cardio.Configuration.url(string: String) {
             null          -> Connection.SslMode.DISABLE
             else -> error("Invalid sslMode value: $sslString " +
                 "(valid: disable, prefer, require, verify-ca, verify-full)")
+        }
+
+        params["sslRootCertPath"]?.let { path ->
+            this.sslRootCert = File(path).readBytes()
         }
 
         params["applicationName"]?.let { this.applicationName = it }

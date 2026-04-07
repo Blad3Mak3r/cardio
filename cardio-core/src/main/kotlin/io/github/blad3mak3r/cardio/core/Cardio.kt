@@ -46,7 +46,7 @@ open class Cardio(
                 username        = username.ifBlank { error("Cardio: username must not be blank") },
                 password        = password,
                 sslMode         = ssl,
-                sslRootCert     = sslRootCert,
+                sslRootCert     = sslRootCert?.copyOf(),
                 applicationName = applicationName,
             ),
             maxSize        = maxSize,

@@ -660,7 +660,8 @@ class Connection private constructor(
                 val nullKeyStore: KeyStore? = null
                 tmf.init(nullKeyStore)
             }
-            return tmf.trustManagers.filterIsInstance<X509TrustManager>().first()
+            return tmf.trustManagers.filterIsInstance<X509TrustManager>().firstOrNull()
+                ?: throw PgSslException("TrustManagerFactory returned no X509TrustManager")
         }
 
         /**
@@ -682,6 +683,7 @@ class Connection private constructor(
                     inner.checkClientTrusted(chain, authType)
 
                 override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
+                    if (chain.isEmpty()) throw CertificateException("Certificate chain is empty")
                     inner.checkServerTrusted(chain, authType)
                     try {
                         verifyHostname(hostname, chain[0])
@@ -708,7 +710,13 @@ class Connection private constructor(
          */
         private fun verifyHostname(hostname: String, certificate: X509Certificate) {
             val ipConn = isIpAddress(hostname)
-            val sans   = certificate.subjectAlternativeNames
+            val sans   = try {
+                certificate.subjectAlternativeNames
+            } catch (e: Exception) {
+                throw SSLPeerUnverifiedException(
+                    "Failed to read SAN extensions from certificate: ${e.message}"
+                )
+            }
 
             if (sans != null) {
                 if (ipConn) {
@@ -818,8 +826,14 @@ class Connection private constructor(
                 .firstNotNullOfOrNull { rdn ->
                     rdn.toAttributes().get("cn")?.get()?.toString()
                 }
-        } catch (_: Exception) {
+        } catch (_: javax.naming.InvalidNameException) {
+            // Malformed DN — treat as "no CN found" and fall through to the
+            // SSLPeerUnverifiedException thrown by the caller.
             null
+        } catch (e: Exception) {
+            throw SSLPeerUnverifiedException(
+                "Failed to parse certificate Distinguished Name: ${e.message}"
+            )
         }
     }
 }
