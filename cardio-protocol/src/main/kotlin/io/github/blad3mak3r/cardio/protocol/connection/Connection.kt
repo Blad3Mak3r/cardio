@@ -175,8 +175,10 @@ class Connection private constructor(
         private set
 
     /** The secret cancel key for this connection, as reported in the `BackendKeyData` startup message. Used together with [processId] for query cancellation. Since protocol 3.2 the key is variable-length (4–256 bytes). */
-    var cancelKey: ByteArray = ByteArray(0)
-        private set
+    val cancelKey: ByteArray
+        get() = _cancelKey.copyOf()
+
+    private var _cancelKey: ByteArray = ByteArray(0)
 
     /** Server runtime parameters received during the startup handshake (e.g. `server_version`, `client_encoding`, `TimeZone`). Updated as `ParameterStatus` messages arrive. */
     val serverParams: MutableMap<String, String> = ConcurrentHashMap()
@@ -397,7 +399,7 @@ class Connection private constructor(
             when (val msg = PgMessageReader.read(readChannel)) {
                 is PgMessage.Authentication          -> handleAuth(msg)
                 is PgMessage.ParameterStatus         -> serverParams[msg.name] = msg.value
-                is PgMessage.BackendKeyData          -> { processId = msg.processId; cancelKey = msg.cancelKey }
+                is PgMessage.BackendKeyData          -> { processId = msg.processId; _cancelKey = msg.cancelKey.copyOf() }
                 is PgMessage.NegotiateProtocolVersion -> Unit  // server downgraded; continue with its supported version
                 is PgMessage.ReadyForQuery           -> { state = State.Ready; break@loop }
                 is PgMessage.ErrorResponse           -> throw msg.toException()
