@@ -2,10 +2,30 @@ package io.github.blad3mak3r.cardio.protocol.codec
 
 import kotlin.uuid.ExperimentalUuidApi
 
+/**
+ * Mutable registry that maps [TypeCodec] instances to PostgreSQL OIDs, enabling
+ * codec lookup during both encoding (client → server) and decoding (server → client).
+ *
+ * Codecs are keyed by both the codec object itself and the [TypeCodec.oid] they declare.
+ * Registering two codecs with the same OID replaces the earlier entry.
+ *
+ * The pre-populated [Default] singleton contains all built-in scalar and array codecs
+ * and is used automatically by [io.github.blad3mak3r.cardio.protocol.connection.Connection].
+ * Custom registries can be created by subclassing and calling [register] in an `init` block,
+ * or by starting with [Default] and adding further codecs.
+ */
 open class TypeCodecRegistry {
     @PublishedApi internal val byCodec = mutableMapOf<TypeCodec<*>, CodecEntry<*>>()
     @PublishedApi internal val byOid = mutableMapOf<Int, CodecEntry<*>>()
 
+    /**
+     * Registers [codec] in this registry.
+     *
+     * If a codec with the same [TypeCodec.oid] was previously registered it is silently replaced.
+     *
+     * @param codec The codec to register.
+     * @return This registry, to allow fluent chaining of multiple [register] calls.
+     */
     fun <T : Any> register(codec: TypeCodec<T>): TypeCodecRegistry {
         val entry = CodecEntry(codec)
         byCodec[codec] = entry
@@ -18,6 +38,18 @@ open class TypeCodecRegistry {
     internal fun <T : Any> decodeByOid(oid: Int, bytes: ByteArray?): T? =
         (byOid[oid] as? CodecEntry<T>)?.decode(bytes)
 
+    /**
+     * Default [TypeCodecRegistry] pre-loaded with every built-in scalar and array codec.
+     *
+     * **Scalar codecs registered:** `Int2`, `Int4`, `Int8`, `Float4`, `Float8`, `Text`, `Varchar`,
+     * `Bpchar`, `Bool`, `ByteArray`, `KotlinUuid`, `Instant`, `LocalDate`, `JSONB`, `JSON`,
+     * `Numeric`, `Timestamp`, `Interval`, `Int4Range`, `Int8Range`, `NumRange`, `TsRange`,
+     * `TsTzRange`, `DateRange`, `Inet`, `Cidr`, `MacAddr`, `MacAddr8`.
+     *
+     * **Array codecs registered:** `Int2[]`, `Int4[]`, `Int8[]`, `Float4[]`, `Float8[]`,
+     * `Text[]`, `Varchar[]`, `Bool[]`, `KotlinUuid[]`, `Timestamp[]`, `Timestamptz[]`,
+     * `Interval[]`, `Numeric[]`, `JSON[]`, `Inet[]`, `Cidr[]`, `MacAddr[]`, `MacAddr8[]`.
+     */
     @OptIn(ExperimentalUuidApi::class)
     object Default : TypeCodecRegistry() {
         init {
@@ -73,3 +105,4 @@ open class TypeCodecRegistry {
         }
     }
 }
+

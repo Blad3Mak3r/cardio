@@ -4,6 +4,21 @@ import io.github.blad3mak3r.cardio.protocol.EncodedParam
 import io.github.blad3mak3r.cardio.protocol.ResultFormat
 import kotlin.uuid.ExperimentalUuidApi
 
+/**
+ * A typed query parameter that pairs a value with its [TypeCodec].
+ *
+ * [Param] instances are passed as query parameters to
+ * [io.github.blad3mak3r.cardio.protocol.DatabaseOperations.query] and
+ * [io.github.blad3mak3r.cardio.protocol.DatabaseOperations.execute].
+ * Use the factory functions (e.g. [Param], [Any?.toParam]) rather than the constructor directly.
+ *
+ * When [value] is `null`, [encode] produces a SQL NULL parameter (binary representation absent,
+ * length = −1 in the Bind message). Otherwise the value is encoded using [codec].
+ *
+ * @param T     The Kotlin type of the parameter value.
+ * @param value The parameter value to send; `null` results in SQL NULL.
+ * @param codec The [TypeCodec] used to encode [value] into PostgreSQL binary format.
+ */
 class Param<T : Any> @PublishedApi internal constructor(
     @PublishedApi internal val value: T?,
     @PublishedApi internal val codec: TypeCodec<T>
@@ -17,10 +32,23 @@ class Param<T : Any> @PublishedApi internal constructor(
         get() = codec.oid
 }
 
-// Con codec explícito
+/**
+ * Creates a [Param] with an explicit [codec].
+ *
+ * Use this overload when the type cannot be automatically resolved by [Any?.toParam], for example
+ * for custom enum types, domain types, or non-standard array element types:
+ * ```kotlin
+ * Param(myEnum.name, TextCodec)
+ * Param(myList, ArrayCodec(PgOid.TEXT_ARRAY, MyEnumCodec))
+ * ```
+ *
+ * @param value The value to encode. Must not be `null`; for SQL NULL pass `null` to [Param] directly.
+ * @param codec The codec to use for encoding.
+ */
 fun <T : Any> Param(value: T,  codec: TypeCodec<T>): Param<T> = Param(value as T?, codec)
 
-// Conveniencia — el codec se infiere del tipo
+// Convenience overloads — the codec is inferred from the value type.
+// For automatic codec resolution from Any?, use Any?.toParam() instead.
 fun Param(value: Int):                       Param<Int>                       = Param(value, Int4Codec)
 fun Param(value: Short):                     Param<Short>                     = Param(value, Int2Codec)
 fun Param(value: Long):                      Param<Long>                      = Param(value, Int8Codec)
@@ -34,7 +62,8 @@ fun Param(value: kotlin.uuid.Uuid):          Param<kotlin.uuid.Uuid>          = 
 fun Param(value: kotlin.time.Instant):        Param<kotlin.time.Instant>        = Param(value, InstantCodec)
 fun Param(value: kotlinx.datetime.LocalDate): Param<kotlinx.datetime.LocalDate> = Param(value, LocalDateCodec)
 
-// Conveniencia para arrays — tipos escalares comunes
+// Convenience overloads for common collection and array types.
+// Kotlin primitive arrays (IntArray, LongArray, …) are automatically converted to List<T>.
 @JvmName("ParamIntList")
 fun Param(value: List<Int>):               Param<List<Int>>               = Param(value, Int4ArrayCodec)
 @JvmName("ParamShortList")
@@ -82,18 +111,23 @@ fun Param(value: Array<kotlin.time.Instant>): Param<List<kotlin.time.Instant>> =
 fun Param(value: Array<kotlin.uuid.Uuid>):    Param<List<kotlin.uuid.Uuid>>    = Param(value.toList(), KotlinUuidArrayCodec)
 
 /**
- * Convierte cualquier valor al [Param] correspondiente de forma automática.
+ * Automatically converts any supported Kotlin value to its corresponding [Param].
  *
- * - Si el valor ya es un [Param], se devuelve tal cual (útil cuando el usuario
- *   quiere pasar un codec explícito con `Param(x, MyCodec)`).
- * - Si el valor es `null`, se genera un parámetro nulo con OID no especificado (0),
- *   dejando que el servidor infiera el tipo.
- * - Para todos los tipos primitivos soportados la resolución es automática.
- * - Para [List] se infiere el codec a partir del tipo del primer elemento no nulo.
- * - Para tipos primitivos de arrays (`IntArray`, `LongArray`, …) se convierten
- *   a lista automáticamente.
- * - Para tipos desconocidos se lanza un error descriptivo que indica cómo usar
- *   `Param(value, codec)` directamente.
+ * Resolution rules (in order):
+ * - If `this` is already a [Param], it is returned unchanged.
+ * - If `this` is `null`, a SQL NULL parameter using [TextCodec] (OID 0 = untyped) is returned.
+ * - Scalar types ([Int], [Short], [Long], [Float], [Double], [String], [Boolean], [ByteArray],
+ *   [kotlin.uuid.Uuid], [kotlin.time.Instant], [kotlinx.datetime.LocalDate]) resolve to their
+ *   corresponding built-in scalar codec.
+ * - Kotlin primitive arrays ([IntArray], [ShortArray], [LongArray], [FloatArray], [DoubleArray],
+ *   [BooleanArray]) are converted to `List<T>` and resolved as below.
+ * - [Array]`<T>` is converted to `List<T>` recursively.
+ * - [List]`<T>` resolves the codec from the type of the first non-null element. An empty or
+ *   all-null list defaults to [TextArrayCodec].
+ * - Any other type throws [IllegalStateException] with a message that explains how to supply an
+ *   explicit codec using `Param(value, codec)`.
+ *
+ * @throws IllegalStateException if the runtime type of `this` has no built-in codec.
  */
 @OptIn(ExperimentalUuidApi::class)
 @Suppress("UNCHECKED_CAST")

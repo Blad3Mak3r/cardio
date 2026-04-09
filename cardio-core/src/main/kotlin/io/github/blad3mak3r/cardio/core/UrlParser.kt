@@ -4,6 +4,23 @@ import io.github.blad3mak3r.cardio.protocol.connection.Connection
 import java.io.File
 import java.net.URI
 
+/**
+ * Populates this [Cardio.Configuration] from a PostgreSQL connection URL.
+ *
+ * Supported URL scheme: `postgres://user:password@host[:port]/database[?params]` or
+ * `postgresql://…`.
+ *
+ * The following query parameters are recognised (keys are case-insensitive):
+ * | Parameter         | Maps to                                                                 |
+ * |-------------------|-------------------------------------------------------------------------|
+ * | `sslmode`         | [Cardio.Configuration.ssl] (`disable`, `prefer`, `require`, `verify-ca`, `verify-full`) |
+ * | `sslrootcertpath` | Reads the PEM file at the given path into [Cardio.Configuration.sslRootCert] |
+ * | `applicationname` | [Cardio.Configuration.applicationName]                                  |
+ *
+ * @throws IllegalArgumentException if the URL is malformed or contains an unknown scheme.
+ * @throws IllegalStateException    if required URL components are missing or if a referenced
+ *                                  certificate file cannot be read.
+ */
 fun Cardio.Configuration.url(string: String) {
     val url = URI.create(string)
 

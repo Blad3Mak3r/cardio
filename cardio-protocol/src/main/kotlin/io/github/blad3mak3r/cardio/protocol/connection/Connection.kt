@@ -46,6 +46,28 @@ import javax.net.ssl.X509TrustManager
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.CoroutineContext
 
+/**
+ * A single, fully-functional PostgreSQL database connection implementing the
+ * PostgreSQL wire protocol (frontend/backend protocol v3).
+ *
+ * **Lifecycle:** Obtain instances through the [connect] factory function (or via
+ * [ConnectionPool], which manages a pool of connections).  The connection is usable
+ * immediately after [connect] returns — the startup and authentication handshakes have
+ * already completed.
+ *
+ * **Authentication:** Supports MD5 password and SCRAM-SHA-256 (the PostgreSQL default
+ * since PostgreSQL 14).
+ *
+ * **TLS/SSL:** All five [SslMode] values are supported.  Negotiation follows the
+ * PostgreSQL SSLRequest protocol.
+ *
+ * **Thread safety:** Each operation is protected by a [kotlinx.coroutines.sync.Mutex].
+ * A connection must not be shared between concurrent coroutines without external
+ * coordination; use [ConnectionPool] for concurrent workloads.
+ *
+ * @see ConnectionPool
+ * @see connect
+ */
 class Connection private constructor(
     private val config: Configuration,
     private val selectorManager: SelectorManager,
@@ -71,10 +93,20 @@ class Connection private constructor(
     /**
      * Connection configuration.
      *
-     * @param sslRootCert PEM-encoded CA certificate used for [SslMode.VERIFY_CA] and
-     *                    [SslMode.VERIFY_FULL].  When `null` the JVM's default trust store
-     *                    is used.  Ignored for [SslMode.DISABLE], [SslMode.PREFER], and
-     *                    [SslMode.REQUIRE].
+     * @param host             Hostname or IP address of the PostgreSQL server. Defaults to `"localhost"`.
+     * @param port             TCP port of the PostgreSQL server. Defaults to `5432`.
+     * @param database         Name of the database to connect to.
+     * @param username         PostgreSQL username.
+     * @param password         PostgreSQL password.
+     * @param sslMode          SSL/TLS mode. Defaults to [SslMode.DISABLE].
+     * @param sslRootCert      PEM-encoded CA certificate used for [SslMode.VERIFY_CA] and
+     *                         [SslMode.VERIFY_FULL]. When `null` the JVM's default trust store
+     *                         is used. Ignored for [SslMode.DISABLE], [SslMode.PREFER], and
+     *                         [SslMode.REQUIRE].
+     * @param connectTimeoutMs Maximum time in milliseconds for each phase of the connection
+     *                         (TCP connect, SSL negotiation, startup/auth). Defaults to `5000`.
+     * @param applicationName  Value sent in the `application_name` startup parameter.
+     *                         Visible in `pg_stat_activity`. Defaults to `"cardio-pg-client"`.
      */
     data class Configuration(
         val host: String = "localhost",
@@ -137,17 +169,22 @@ class Connection private constructor(
     internal var state: State = State.Connecting
         private set
 
+    /** The process ID of the server backend for this connection, as reported in the `BackendKeyData` startup message. Can be used to cancel in-progress queries. */
     var processId: Int = 0
         private set
 
+    /** The secret cancel key for this connection, as reported in the `BackendKeyData` startup message. Used together with [processId] for query cancellation. */
     var secretKey: Int = 0
         private set
 
+    /** Server runtime parameters received during the startup handshake (e.g. `server_version`, `client_encoding`, `TimeZone`). Updated as `ParameterStatus` messages arrive. */
     val serverParams: MutableMap<String, String> = ConcurrentHashMap()
 
+    /** Returns `true` when the connection is in the [State.Ready] state and may accept queries. */
     val isReady: Boolean
         get() = state == State.Ready
 
+    /** Returns `true` when the connection has entered the [State.Failed] state due to an unrecoverable error and must not be reused. */
     val isFailed: Boolean
         get() = state is State.Failed
 
@@ -205,12 +242,20 @@ class Connection private constructor(
         }
     }
 
+    /** Sends `BEGIN` to start an explicit transaction. The connection must be in [State.Ready]. */
     suspend fun beginTransaction()    { execute("BEGIN") }
 
+    /** Sends `COMMIT` to commit the current transaction. */
     suspend fun commitTransaction()   { execute("COMMIT") }
 
+    /** Sends `ROLLBACK` to abort the current transaction. */
     suspend fun rollbackTransaction() { execute("ROLLBACK") }
 
+    /**
+     * Sends a `Terminate` message to the server and closes the underlying TCP socket and
+     * selector manager. After calling this method the connection must not be used again.
+     * Safe to call multiple times — subsequent calls are no-ops.
+     */
     suspend fun close() {
         val alreadyClosing = mutex.withLock {
             if (state == State.Closing) return@withLock true
@@ -512,6 +557,22 @@ class Connection private constructor(
             override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
         }
 
+        /**
+         * Opens a connection to the PostgreSQL server described by [config], performs SSL
+         * negotiation (if required), and completes the startup/authentication handshake.
+         *
+         * Returns the ready-to-use [Connection] on success.
+         *
+         * @param config   Connection parameters (host, port, credentials, SSL mode, …).
+         * @param registry Codec registry used to encode parameters and decode result rows.
+         *                 Defaults to [TypeCodecRegistry.Default].
+         * @param context  [kotlin.coroutines.CoroutineContext] for the Ktor selector manager.
+         *                 Defaults to [kotlinx.coroutines.Dispatchers.IO].
+         * @throws PgConnectException if the TCP connection or startup handshake fails or times out.
+         * @throws PgSslException     if SSL negotiation fails (server declined a required mode,
+         *                            certificate validation failed, or hostname mismatch).
+         * @throws PgException        if the server rejects the connection (wrong credentials, etc.).
+         */
         suspend fun connect(
             config: Configuration,
             registry: TypeCodecRegistry = TypeCodecRegistry.Default,

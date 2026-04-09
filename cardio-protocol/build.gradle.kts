@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.maven.publish)
+    alias(libs.plugins.dokka)
 
     `java-library`
 }
@@ -16,6 +17,17 @@ dependencies {
 
 kotlin {
     jvmToolchain(21)
+}
+
+dokka {
+    moduleName.set("cardio-protocol")
+    dokkaSourceSets.main {
+        sourceLink {
+            localDirectory.set(file("src/main/kotlin"))
+            remoteUrl.set(uri("https://github.com/Blad3Mak3r/cardio/tree/main/cardio-protocol/src/main/kotlin"))
+            remoteLineSuffix.set("#L")
+        }
+    }
 }
 
 mavenPublishing {

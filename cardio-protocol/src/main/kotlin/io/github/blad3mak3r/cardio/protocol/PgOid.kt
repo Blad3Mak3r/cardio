@@ -1,5 +1,14 @@
 package io.github.blad3mak3r.cardio.protocol
 
+/**
+ * PostgreSQL object identifier (OID) constants for the data types and array types
+ * supported by Cardio's built-in codec registry.
+ *
+ * These values correspond to the OIDs defined in the PostgreSQL system catalogue
+ * (`pg_type`). They are used when encoding query parameters and when selecting the
+ * correct [io.github.blad3mak3r.cardio.protocol.codec.TypeCodec] to decode a result
+ * column identified by [FieldDescription.typeOid].
+ */
 object PgOid {
     const val BOOL        = 16
     const val BYTEA       = 17

@@ -21,6 +21,28 @@ import kotlinx.serialization.modules.EmptySerializersModule
 import kotlinx.serialization.modules.SerializersModule
 import kotlin.uuid.ExperimentalUuidApi
 
+/**
+ * A [kotlinx.serialization] [Decoder] and [CompositeDecoder] that reads values from a
+ * PostgreSQL [Row] returned by Cardio.
+ *
+ * Field names are mapped to column names by converting camelCase to snake_case.
+ * `@SerialName` annotations are respected: if the element name set by `@SerialName` already
+ * contains underscores (i.e. the user provided the exact snake_case name), the conversion
+ * is still applied but produces the same result.
+ *
+ * Enum values are matched **case-insensitively** against the serialized name of each enum entry.
+ *
+ * The following kotlinx/Kotlin types bypass `kotlinx.serialization` deserialization and are
+ * decoded directly via the corresponding Cardio codec:
+ * `kotlin.uuid.Uuid`, `kotlin.time.Instant`, `kotlinx.datetime.LocalDate`, `kotlin.ByteArray`,
+ * `kotlin.String`.
+ *
+ * Instances are normally created by [CardioSerializationFormat]; create them directly only when
+ * you need a custom [SerializersModule].
+ *
+ * @param row The result row to decode values from.
+ * @param serializersModule Serializers module used for contextual and polymorphic serialization.
+ */
 class CardioDecoder(
     private val row: Row,
     override val serializersModule: SerializersModule = EmptySerializersModule()

@@ -3,6 +3,24 @@ package io.github.blad3mak3r.cardio.core
 import io.github.blad3mak3r.cardio.protocol.DatabaseOperations
 import io.github.blad3mak3r.cardio.protocol.Row
 
+/**
+ * Abstract base class for repository objects that encapsulate data-access logic.
+ *
+ * Subclass [CardioRepository] and inject a [Cardio] (or a typed subclass) to group
+ * related SQL operations in one place.  [query], [execute], and [inTransaction] are
+ * forwarded to the underlying [Cardio] instance.
+ *
+ * ```kotlin
+ * class UserRepository(db: Cardio) : CardioRepository<Cardio>(db) {
+ *     suspend fun findById(id: Int) = queryOne("SELECT * FROM users WHERE id = $1", id) { row ->
+ *         User(row.get("id"), row.get("name"))
+ *     }
+ * }
+ * ```
+ *
+ * @param C The concrete [Cardio] subtype managed by this repository.
+ * @param db The [Cardio] instance (or subclass) to delegate to.
+ */
 abstract class CardioRepository<C : Cardio>(protected val db: C) : DatabaseOperations {
 
     override suspend fun <T> query(
@@ -16,6 +34,12 @@ abstract class CardioRepository<C : Cardio>(protected val db: C) : DatabaseOpera
         vararg params: Any?,
     ): Long = db.execute(sql, *params)
 
+    /**
+     * Begins a transaction on [db], runs [block], and commits on success (rolls back on exception).
+     *
+     * @param block Suspending lambda that receives a [CardioTransaction] handle.
+     * @return The value returned by [block].
+     */
     protected suspend fun <T> inTransaction(
         block: suspend (CardioTransaction) -> T,
     ): T = db.inTransaction(block)
