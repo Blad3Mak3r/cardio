@@ -6,6 +6,7 @@ import io.github.blad3mak3r.cardio.protocol.PgRange
 import io.github.blad3mak3r.cardio.protocol.PgInet
 import kotlin.uuid.ExperimentalUuidApi
 
+/** Codec for the PostgreSQL `SMALLINT` (`INT2`) type, mapped to [Short]. */
 object Int2Codec : TypeCodec<Short> {
     override val oid = PgOid.INT2
     override fun encode(value: Short): ByteArray = byteArrayOf(
@@ -17,6 +18,7 @@ object Int2Codec : TypeCodec<Short> {
     }
 }
 
+/** Codec for the PostgreSQL `INTEGER` (`INT4`) type, mapped to [Int]. */
 object Int4Codec : TypeCodec<Int> {
     override val oid = PgOid.INT4
     override fun encode(value: Int): ByteArray = byteArrayOf(
@@ -32,6 +34,7 @@ object Int4Codec : TypeCodec<Int> {
     }
 }
 
+/** Codec for the PostgreSQL `BIGINT` (`INT8`) type, mapped to [Long]. */
 object Int8Codec : TypeCodec<Long> {
     override val oid = PgOid.INT8
     override fun encode(value: Long): ByteArray = ByteArray(8) { i ->
@@ -45,6 +48,7 @@ object Int8Codec : TypeCodec<Long> {
     }
 }
 
+/** Codec for the PostgreSQL `REAL` (`FLOAT4`) type, mapped to [Float]. */
 object Float4Codec : TypeCodec<Float> {
     override val oid = PgOid.FLOAT4
     override fun encode(value: Float)      = Int4Codec.encode(java.lang.Float.floatToIntBits(value))
@@ -52,6 +56,7 @@ object Float4Codec : TypeCodec<Float> {
         ?.let { java.lang.Float.intBitsToFloat(it) }
 }
 
+/** Codec for the PostgreSQL `DOUBLE PRECISION` (`FLOAT8`) type, mapped to [Double]. */
 object Float8Codec : TypeCodec<Double> {
     override val oid = PgOid.FLOAT8
     override fun encode(value: Double)     = Int8Codec.encode(java.lang.Double.doubleToLongBits(value))
@@ -59,39 +64,45 @@ object Float8Codec : TypeCodec<Double> {
         ?.let { java.lang.Double.longBitsToDouble(it) }
 }
 
+/** Codec for the PostgreSQL `TEXT` type, mapped to [String] (UTF-8). */
 object TextCodec : TypeCodec<String> {
     override val oid = PgOid.TEXT
     override fun encode(value: String)     = value.toByteArray(Charsets.UTF_8)
     override fun decode(bytes: ByteArray?) = bytes?.toString(Charsets.UTF_8)
 }
 
-// CHARACTER VARYING / VARCHAR
+/** Codec for the PostgreSQL `CHARACTER VARYING` (`VARCHAR`) type, mapped to [String] (UTF-8). */
 object VarcharCodec : TypeCodec<String> {
     override val oid = PgOid.VARCHAR
     override fun encode(value: String)     = value.toByteArray(Charsets.UTF_8)
     override fun decode(bytes: ByteArray?) = bytes?.toString(Charsets.UTF_8)
 }
 
-// CHAR(n) / BPCHAR — fixed-length blank-padded character type
+/** Codec for the PostgreSQL `CHAR(n)` (`BPCHAR`) fixed-length blank-padded type, mapped to [String] (UTF-8). Trailing blank-padding sent by the server is preserved. */
 object BpcharCodec : TypeCodec<String> {
     override val oid = PgOid.BPCHAR
     override fun encode(value: String)     = value.toByteArray(Charsets.UTF_8)
     override fun decode(bytes: ByteArray?) = bytes?.toString(Charsets.UTF_8)
 }
 
+/** Codec for the PostgreSQL `BOOLEAN` type, mapped to [Boolean]. */
 object BoolCodec : TypeCodec<Boolean> {
     override val oid = PgOid.BOOL
     override fun encode(value: Boolean): ByteArray = byteArrayOf(if (value) 1 else 0)
     override fun decode(bytes: ByteArray?)          = bytes?.let { it[0] != 0.toByte() }
 }
 
+/** Codec for the PostgreSQL `BYTEA` type, mapped to [ByteArray]. */
 object ByteArrayCodec : TypeCodec<ByteArray> {
     override val oid = PgOid.BYTEA
     override fun encode(value: ByteArray)  = value
     override fun decode(bytes: ByteArray?) = bytes
 }
 
-// kotlin.uuid.Uuid ↔ 16 bytes big-endian
+/**
+ * Codec for the PostgreSQL `UUID` type, mapped to [kotlin.uuid.Uuid].
+ * Values are encoded as 16 bytes in big-endian (MSB first) binary format.
+ */
 @OptIn(ExperimentalUuidApi::class)
 object KotlinUuidCodec : TypeCodec<kotlin.uuid.Uuid> {
     override val oid = PgOid.UUID
@@ -109,8 +120,10 @@ object KotlinUuidCodec : TypeCodec<kotlin.uuid.Uuid> {
 }
 
 
-// kotlin.Instant ↔ TIMESTAMPTZ
-// Postgres epoch: microseconds since 2000-01-01 00:00:00 UTC
+/**
+ * Codec for the PostgreSQL `TIMESTAMPTZ` type, mapped to [kotlin.time.Instant].
+ * Values are encoded as microseconds since the PostgreSQL epoch (2000-01-01 00:00:00 UTC).
+ */
 object InstantCodec : TypeCodec<kotlin.time.Instant> {
     override val oid = PgOid.TIMESTAMPTZ
     private const val PG_EPOCH_MICROS = 946684800_000_000L
@@ -125,8 +138,10 @@ object InstantCodec : TypeCodec<kotlin.time.Instant> {
     }
 }
 
-// kotlinx.datetime.LocalDate ↔ DATE
-// Postgres DATE: days since 2000-01-01; kotlinx.datetime epoch: days since 1970-01-01
+/**
+ * Codec for the PostgreSQL `DATE` type, mapped to [kotlinx.datetime.LocalDate].
+ * Values are encoded as days since the PostgreSQL epoch (2000-01-01).
+ */
 object LocalDateCodec : TypeCodec<kotlinx.datetime.LocalDate> {
     override val oid = PgOid.DATE
     private const val PG_EPOCH_DAYS = 10957L // days from 1970-01-01 to 2000-01-01
@@ -136,7 +151,10 @@ object LocalDateCodec : TypeCodec<kotlinx.datetime.LocalDate> {
         Int4Codec.decode(bytes)?.let { kotlinx.datetime.LocalDate.fromEpochDays(it + PG_EPOCH_DAYS) }
 }
 
-// JSONB: Postgres prepends version byte 0x01
+/**
+ * Codec for the PostgreSQL `JSONB` type, mapped to [String] (raw JSON text).
+ * The JSONB binary wire format prepends a version byte (`0x01`) that is stripped on decode.
+ */
 object JsonbCodec : TypeCodec<String> {
     override val oid = PgOid.JSONB
     override fun encode(value: String): ByteArray =
@@ -147,7 +165,7 @@ object JsonbCodec : TypeCodec<String> {
     }
 }
 
-// JSON: Plain text JSON (no binary compression, no version byte)
+/** Codec for the PostgreSQL `JSON` type, mapped to [String] (raw JSON text, UTF-8, no version byte). */
 object JsonCodec : TypeCodec<String> {
     override val oid = PgOid.JSON
     override fun encode(value: String): ByteArray =
@@ -156,13 +174,11 @@ object JsonCodec : TypeCodec<String> {
         bytes?.toString(Charsets.UTF_8)
 }
 
-// INET → PgInet (InetAddress + netmask)
-// PostgreSQL binary format:
-//   byte family (2=IPv4, 3=IPv6)
-//   byte netmask (0-32 for IPv4, 0-128 for IPv6)
-//   byte is_cidr (0=host, 1=network)
-//   byte address_length (4 for IPv4, 16 for IPv6)
-//   bytes address
+/**
+ * Codec for the PostgreSQL `INET` type, mapped to [PgInet] (host address + netmask).
+ * The binary format encodes: address family (2=IPv4, 3=IPv6), netmask bits,
+ * `is_cidr` flag (always `0` for INET), address length, and the address bytes.
+ */
 object InetCodec : TypeCodec<PgInet> {
     override val oid = PgOid.INET
     
@@ -199,8 +215,10 @@ object InetCodec : TypeCodec<PgInet> {
     }
 }
 
-// CIDR → PgInet (network address + netmask)
-// Same binary format as INET but with is_cidr=1
+/**
+ * Codec for the PostgreSQL `CIDR` type, mapped to [PgInet] (network address + netmask).
+ * Uses the same binary format as [InetCodec] but with the `is_cidr` flag set to `1`.
+ */
 object CidrCodec : TypeCodec<PgInet> {
     override val oid = PgOid.CIDR
     
@@ -237,8 +255,10 @@ object CidrCodec : TypeCodec<PgInet> {
     }
 }
 
-// MACADDR → String (format: "08:00:2b:01:02:03")
-// PostgreSQL binary format: 6 bytes (raw MAC address)
+/**
+ * Codec for the PostgreSQL `MACADDR` type, mapped to [String] in `XX:XX:XX:XX:XX:XX` format.
+ * Accepts colons, hyphens, or dots as separators during encoding; always outputs colon-separated hex on decode.
+ */
 object MacAddrCodec : TypeCodec<String> {
     override val oid = PgOid.MACADDR
     
@@ -258,8 +278,10 @@ object MacAddrCodec : TypeCodec<String> {
     }
 }
 
-// MACADDR8 → String (format: "08:00:2b:01:02:03:04:05" - EUI-64)
-// PostgreSQL binary format: 8 bytes (raw MAC address)
+/**
+ * Codec for the PostgreSQL `MACADDR8` (EUI-64) type, mapped to [String] in `XX:XX:XX:XX:XX:XX:XX:XX` format.
+ * Accepts colons, hyphens, or dots as separators during encoding; always outputs colon-separated hex on decode.
+ */
 object MacAddr8Codec : TypeCodec<String> {
     override val oid = PgOid.MACADDR8
     
@@ -278,13 +300,11 @@ object MacAddr8Codec : TypeCodec<String> {
     }
 }
 
-// NUMERIC / DECIMAL → java.math.BigDecimal
-// PostgreSQL binary format:
-//   int16 ndigits (number of base-10000 digits)
-//   int16 weight  (power of 10000 for first digit)
-//   int16 sign    (0x0000 = positive, 0x4000 = negative, 0xC000 = NaN)
-//   int16 dscale  (number of decimal digits after decimal point)
-//   int16[] digits (base-10000 digits, most significant first)
+/**
+ * Codec for the PostgreSQL `NUMERIC`/`DECIMAL` type, mapped to [java.math.BigDecimal].
+ * Uses the PostgreSQL binary numeric format (base-10000 digit groups with weight, sign and scale).
+ * PostgreSQL `NaN` is decoded as `null` because [java.math.BigDecimal] has no NaN representation.
+ */
 object NumericCodec : TypeCodec<java.math.BigDecimal> {
     override val oid = PgOid.NUMERIC
     
@@ -380,9 +400,11 @@ object NumericCodec : TypeCodec<java.math.BigDecimal> {
     }
 }
 
-// TIMESTAMP (without timezone) → kotlinx.datetime.LocalDateTime
-// PostgreSQL format: microseconds since 2000-01-01 00:00:00 (no timezone)
-// LocalDateTime is treated as if it were in UTC for encoding/decoding purposes
+/**
+ * Codec for the PostgreSQL `TIMESTAMP` (without timezone) type, mapped to [kotlinx.datetime.LocalDateTime].
+ * Values are encoded as microseconds since the PostgreSQL epoch (2000-01-01 00:00:00, no timezone).
+ * The [kotlinx.datetime.LocalDateTime] is treated as calendar fields with no timezone conversion.
+ */
 object TimestampCodec : TypeCodec<kotlinx.datetime.LocalDateTime> {
     override val oid = PgOid.TIMESTAMP
     private const val PG_EPOCH_MICROS = 946684800_000_000L // microseconds from Unix epoch to 2000-01-01 00:00:00 UTC
@@ -433,11 +455,11 @@ object TimestampCodec : TypeCodec<kotlinx.datetime.LocalDateTime> {
     }
 }
 
-// INTERVAL → PgInterval
-// PostgreSQL binary format:
-//   int64 microseconds (time portion)
-//   int32 days
-//   int32 months
+/**
+ * Codec for the PostgreSQL `INTERVAL` type, mapped to [PgInterval].
+ * The binary format encodes 8 bytes of microseconds (time portion), 4 bytes of days,
+ * and 4 bytes of months, all in big-endian order.
+ */
 object IntervalCodec : TypeCodec<PgInterval> {
     override val oid = PgOid.INTERVAL
     
@@ -464,12 +486,7 @@ object IntervalCodec : TypeCodec<PgInterval> {
     }
 }
 
-// INT4RANGE → PgRange<Int>
-// PostgreSQL binary format:
-//   byte flags (bit 0: lower inclusive, bit 1: upper inclusive,
-//               bit 2: lower unbounded, bit 3: upper unbounded, bit 4: empty)
-//   int32 lower bound (if not unbounded)
-//   int32 upper bound (if not unbounded)
+/** Codec for the PostgreSQL `INT4RANGE` type, mapped to [PgRange]`<`[Int]`>`. */
 object Int4RangeCodec : TypeCodec<PgRange<Int>> {
     override val oid = PgOid.INT4RANGE
     
@@ -531,8 +548,7 @@ object Int4RangeCodec : TypeCodec<PgRange<Int>> {
     }
 }
 
-// INT8RANGE → PgRange<Long>
-// PostgreSQL binary format: same as INT4RANGE but with int64 bounds
+/** Codec for the PostgreSQL `INT8RANGE` type, mapped to [PgRange]`<`[Long]`>`. */
 object Int8RangeCodec : TypeCodec<PgRange<Long>> {
     override val oid = PgOid.INT8RANGE
     
@@ -594,8 +610,7 @@ object Int8RangeCodec : TypeCodec<PgRange<Long>> {
     }
 }
 
-// NUMRANGE → PgRange<BigDecimal>
-// PostgreSQL binary format: flags + NUMERIC bounds
+/** Codec for the PostgreSQL `NUMRANGE` type, mapped to [PgRange]`<`[java.math.BigDecimal]`>`. */
 object NumRangeCodec : TypeCodec<PgRange<java.math.BigDecimal>> {
     override val oid = PgOid.NUMRANGE
     
@@ -672,8 +687,7 @@ object NumRangeCodec : TypeCodec<PgRange<java.math.BigDecimal>> {
     }
 }
 
-// TSRANGE → PgRange<LocalDateTime>
-// PostgreSQL binary format: flags + TIMESTAMP bounds (microseconds)
+/** Codec for the PostgreSQL `TSRANGE` type, mapped to [PgRange]`<`[kotlinx.datetime.LocalDateTime]`>`. */
 object TsRangeCodec : TypeCodec<PgRange<kotlinx.datetime.LocalDateTime>> {
     override val oid = PgOid.TSRANGE
     
@@ -748,8 +762,7 @@ object TsRangeCodec : TypeCodec<PgRange<kotlinx.datetime.LocalDateTime>> {
     }
 }
 
-// TSTZRANGE → PgRange<Instant>
-// PostgreSQL binary format: flags + TIMESTAMPTZ bounds (microseconds)
+/** Codec for the PostgreSQL `TSTZRANGE` type, mapped to [PgRange]`<`[kotlin.time.Instant]`>`. */
 object TsTzRangeCodec : TypeCodec<PgRange<kotlin.time.Instant>> {
     override val oid = PgOid.TSTZRANGE
     
@@ -824,8 +837,7 @@ object TsTzRangeCodec : TypeCodec<PgRange<kotlin.time.Instant>> {
     }
 }
 
-// DATERANGE → PgRange<LocalDate>
-// PostgreSQL binary format: flags + DATE bounds (days since 2000-01-01)
+/** Codec for the PostgreSQL `DATERANGE` type, mapped to [PgRange]`<`[kotlinx.datetime.LocalDate]`>`. */
 object DateRangeCodec : TypeCodec<PgRange<kotlinx.datetime.LocalDate>> {
     override val oid = PgOid.DATERANGE
     
@@ -901,21 +913,29 @@ object DateRangeCodec : TypeCodec<PgRange<kotlinx.datetime.LocalDate>> {
 }
 
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Array codec — encodes/decodes List<T> using the PostgreSQL binary array format
-//
-// Wire layout (1-D):
-//   int32  ndim          = 1
-//   int32  flags         = 0 (bit-0 would mean "contains nulls")
-//   int32  element OID
-//   int32  dim[0] length
-//   int32  dim[0] lower bound = 1
-//   For every element:
-//     int32  byte length  (-1 = SQL NULL)
-//     bytes  element data (absent when length == -1)
-// ──────────────────────────────────────────────────────────────────────────────
+/**
+ * Generic [TypeCodec] for PostgreSQL one-dimensional array types, mapping to `List<T>`.
+ *
+ * The PostgreSQL binary array wire format encodes:
+ * - 4 bytes: number of dimensions (`1` for all arrays produced by this codec)
+ * - 4 bytes: flags (`0` — null-bitmap not sent)
+ * - 4 bytes: element OID
+ * - 4 bytes: dimension length
+ * - 4 bytes: dimension lower bound (always `1`)
+ * - For each element: 4 bytes length (`-1` for SQL NULL) followed by the element bytes
+ *
+ * SQL NULL elements in the decoded array are silently dropped (filtered out).
+ *
+ * For the common scalar types, pre-built instances like [Int4ArrayCodec], [TextArrayCodec],
+ * etc. are provided — there is no need to instantiate [ArrayCodec] directly for those types.
+ *
+ * @param T           Kotlin element type.
+ * @param oid         PostgreSQL OID of the array type (e.g. [PgOid.INT4_ARRAY]).
+ * @param elementCodec Codec used to encode and decode individual array elements.
+ */
 class ArrayCodec<T : Any>(
     override val oid: Int,
+    /** Codec used to encode and decode individual elements of the array. */
     val elementCodec: TypeCodec<T>
 ) : TypeCodec<List<T>> {
 
@@ -967,25 +987,44 @@ class ArrayCodec<T : Any>(
     }
 }
 
-// Pre-built array codec instances — mirror the scalar codecs above
+// Pre-built array codec instances — one for each built-in scalar codec.
+// Use these directly as query parameters or pass them to Param(list, codec).
+/** Pre-built [ArrayCodec] for the PostgreSQL `SMALLINT[]` (`INT2[]`) type. */
 val Int2ArrayCodec          = ArrayCodec(PgOid.INT2_ARRAY,        Int2Codec)
+/** Pre-built [ArrayCodec] for the PostgreSQL `INTEGER[]` (`INT4[]`) type. */
 val Int4ArrayCodec          = ArrayCodec(PgOid.INT4_ARRAY,        Int4Codec)
+/** Pre-built [ArrayCodec] for the PostgreSQL `BIGINT[]` (`INT8[]`) type. */
 val Int8ArrayCodec          = ArrayCodec(PgOid.INT8_ARRAY,        Int8Codec)
+/** Pre-built [ArrayCodec] for the PostgreSQL `REAL[]` (`FLOAT4[]`) type. */
 val Float4ArrayCodec        = ArrayCodec(PgOid.FLOAT4_ARRAY,      Float4Codec)
+/** Pre-built [ArrayCodec] for the PostgreSQL `DOUBLE PRECISION[]` (`FLOAT8[]`) type. */
 val Float8ArrayCodec        = ArrayCodec(PgOid.FLOAT8_ARRAY,      Float8Codec)
+/** Pre-built [ArrayCodec] for the PostgreSQL `TEXT[]` type. */
 val TextArrayCodec          = ArrayCodec(PgOid.TEXT_ARRAY,        TextCodec)
+/** Pre-built [ArrayCodec] for the PostgreSQL `VARCHAR[]` type. */
 val VarcharArrayCodec       = ArrayCodec(PgOid.VARCHAR_ARRAY,     VarcharCodec)
+/** Pre-built [ArrayCodec] for the PostgreSQL `BOOLEAN[]` type. */
 val BoolArrayCodec          = ArrayCodec(PgOid.BOOL_ARRAY,        BoolCodec)
+/** Pre-built [ArrayCodec] for the PostgreSQL `TIMESTAMP[]` (without timezone) type. */
 val TimestampArrayCodec     = ArrayCodec(PgOid.TIMESTAMP_ARRAY,   TimestampCodec)
+/** Pre-built [ArrayCodec] for the PostgreSQL `TIMESTAMPTZ[]` type. */
 val TimestamptzArrayCodec   = ArrayCodec(PgOid.TIMESTAMPTZ_ARRAY, InstantCodec)
+/** Pre-built [ArrayCodec] for the PostgreSQL `INTERVAL[]` type. */
 val IntervalArrayCodec      = ArrayCodec(PgOid.INTERVAL_ARRAY,    IntervalCodec)
+/** Pre-built [ArrayCodec] for the PostgreSQL `NUMERIC[]` type. */
 val NumericArrayCodec       = ArrayCodec(PgOid.NUMERIC_ARRAY,     NumericCodec)
+/** Pre-built [ArrayCodec] for the PostgreSQL `JSON[]` type. */
 val JsonArrayCodec          = ArrayCodec(PgOid.JSON_ARRAY,        JsonCodec)
+/** Pre-built [ArrayCodec] for the PostgreSQL `INET[]` type. */
 val InetArrayCodec          = ArrayCodec(PgOid.INET_ARRAY,        InetCodec)
+/** Pre-built [ArrayCodec] for the PostgreSQL `CIDR[]` type. */
 val CidrArrayCodec          = ArrayCodec(PgOid.CIDR_ARRAY,        CidrCodec)
+/** Pre-built [ArrayCodec] for the PostgreSQL `MACADDR[]` type. */
 val MacAddrArrayCodec       = ArrayCodec(PgOid.MACADDR_ARRAY,     MacAddrCodec)
+/** Pre-built [ArrayCodec] for the PostgreSQL `MACADDR8[]` (EUI-64) type. */
 val MacAddr8ArrayCodec      = ArrayCodec(PgOid.MACADDR8_ARRAY,    MacAddr8Codec)
 
+/** Pre-built [ArrayCodec] for the PostgreSQL `UUID[]` type, using [kotlin.uuid.Uuid] elements. */
 @OptIn(ExperimentalUuidApi::class)
 val KotlinUuidArrayCodec    = ArrayCodec(PgOid.UUID_ARRAY,        KotlinUuidCodec)
 
