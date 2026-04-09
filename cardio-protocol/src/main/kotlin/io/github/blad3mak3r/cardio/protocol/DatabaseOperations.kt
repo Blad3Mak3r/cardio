@@ -4,8 +4,7 @@ package io.github.blad3mak3r.cardio.protocol
  * Common interface for executing SQL queries and commands against a PostgreSQL database.
  *
  * Implemented by [io.github.blad3mak3r.cardio.protocol.connection.Connection],
- * [io.github.blad3mak3r.cardio.core.Cardio], [io.github.blad3mak3r.cardio.core.CardioTransaction],
- * and [io.github.blad3mak3r.cardio.core.CardioRepository].
+ * `Cardio`, `CardioTransaction`, and `CardioRepository` from the `cardio-core` module.
  *
  * All operations use PostgreSQL native positional parameters (`$1`, `$2`, …).
  */
