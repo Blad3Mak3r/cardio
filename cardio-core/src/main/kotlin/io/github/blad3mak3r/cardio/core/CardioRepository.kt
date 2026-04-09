@@ -23,12 +23,27 @@ import io.github.blad3mak3r.cardio.protocol.Row
  */
 abstract class CardioRepository<C : Cardio>(protected val db: C) : DatabaseOperations {
 
+    /**
+     * Executes [sql] and maps every result row to a value using [mapper].
+     *
+     * @param sql    PostgreSQL query using positional parameters (`$1`, `$2`, …).
+     * @param params Parameter values in positional order.
+     * @param mapper Transformation applied to each result row.
+     * @return List of values produced by [mapper].
+     */
     override suspend fun <T> query(
         sql: String,
         vararg params: Any?,
         mapper: (Row) -> T,
     ): List<T> = db.query(sql, *params, mapper = mapper)
 
+    /**
+     * Executes [sql] as a DML/DDL statement and returns the number of affected rows.
+     *
+     * @param sql    PostgreSQL statement using positional parameters (`$1`, `$2`, …).
+     * @param params Parameter values in positional order.
+     * @return Number of rows affected.
+     */
     override suspend fun execute(
         sql: String,
         vararg params: Any?,

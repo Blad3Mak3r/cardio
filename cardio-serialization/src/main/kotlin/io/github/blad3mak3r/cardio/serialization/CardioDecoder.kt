@@ -72,8 +72,8 @@ class CardioDecoder(
         return (0 until enumDescriptor.elementsCount).firstOrNull { i ->
             enumDescriptor.getElementName(i).uppercase() == value
         } ?: error(
-            "Cardio: valor '$value' no encontrado en enum '${enumDescriptor.serialName}'. " +
-                    "Valores válidos: ${(0 until enumDescriptor.elementsCount).map { enumDescriptor.getElementName(it) }}")
+            "Cardio: value '$value' not found in enum '${enumDescriptor.serialName}'. " +
+                    "Valid values: ${(0 until enumDescriptor.elementsCount).map { enumDescriptor.getElementName(it) }}")
     }
 
     @OptIn(ExperimentalUuidApi::class)
@@ -119,7 +119,6 @@ class CardioDecoder(
 
         val elementName = descriptor.getElementName(currentIndex)
 
-        // @SerialName tiene prioridad, si no: camelCase → snake_case
         currentColumnName = elementName.camelToSnakeCase()
 
         return currentIndex++
