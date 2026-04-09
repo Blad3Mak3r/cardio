@@ -4,8 +4,27 @@ import io.ktor.utils.io.*
 import kotlinx.io.Buffer
 import kotlinx.io.readByteArray
 
+/**
+ * Reads and decodes PostgreSQL backend messages from a [io.ktor.utils.io.ByteReadChannel].
+ *
+ * Each backend message on the wire starts with:
+ * 1. A single **type byte** that identifies the message kind.
+ * 2. A 4-byte **Int32 length** field (includes itself but not the type byte).
+ * 3. The **payload** bytes (length − 4 bytes).
+ *
+ * [read] fully consumes one message from the channel and returns the corresponding
+ * [PgMessage.Backend] subtype.
+ */
 object PgMessageReader {
 
+    /**
+     * Suspends until one complete backend message is available on [channel], then
+     * decodes and returns it as a [PgMessage.Backend].
+     *
+     * @param channel The byte channel to read from.
+     * @return The decoded backend message.
+     * @throws IllegalStateException if the message type byte is not recognised.
+     */
     suspend fun read(channel: ByteReadChannel): PgMessage.Backend {
         val typeByte = channel.readByte()
         val length = channel.readInt() - 4
