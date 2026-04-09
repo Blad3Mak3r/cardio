@@ -23,7 +23,7 @@ sealed interface PgMessage {
      *
      * Unlike all other frontend messages, this message has **no leading type byte**.
      * It starts with a 4-byte total length, followed by the protocol version
-     * (`196608` = 3.0), and then the startup parameters as null-terminated key/value pairs.
+     * (`196610` = 3.2), and then the startup parameters as null-terminated key/value pairs.
      *
      * @property username The name of the database user to authenticate as.
      * @property database The name of the database to connect to.
@@ -153,15 +153,30 @@ sealed interface PgMessage {
 
     /**
      * Out-of-band cancel request sent on a **separate** TCP connection to ask the server
-     * to cancel the query running on the backend identified by [processId] and [secretKey].
+     * to cancel the query running on the backend identified by [processId] and [cancelKey].
      *
-     * @property processId  Process ID of the backend to cancel (received as [BackendKeyData.processId]).
-     * @property secretKey  Secret key of the backend (received as [BackendKeyData.secretKey]).
+     * Since protocol 3.2 the cancel key is variable-length (4–256 bytes). When connected
+     * to a protocol 3.0 server the key is always 4 bytes.
+     *
+     * @property processId Process ID of the backend to cancel (received as [BackendKeyData.processId]).
+     * @property cancelKey Opaque cancel key (received as [BackendKeyData.cancelKey]).
      */
     data class CancelRequest(
         val processId: Int,
-        val secretKey: Int
-    ) : Frontend
+        val cancelKey: ByteArray
+    ) : Frontend {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is CancelRequest) return false
+            return processId == other.processId && cancelKey.contentEquals(other.cancelKey)
+        }
+
+        override fun hashCode(): Int {
+            var result = processId
+            result = 31 * result + cancelKey.contentHashCode()
+            return result
+        }
+    }
 
     /**
      * Marker interface for messages that originate from the server (backend).
@@ -240,16 +255,50 @@ sealed interface PgMessage {
     ) : Backend
 
     /**
-     * Carries the process ID and secret key of the backend process. Clients store
-     * these values to be able to send a [CancelRequest] if needed.
+     * Sent by the server during the startup handshake when it does not support the minor
+     * protocol version requested by the client, but does support an earlier version.
+     *
+     * After receiving this message the authentication continues using the version indicated
+     * by [newestMinorVersion]. Clients that require a newer version should close the
+     * connection immediately; otherwise they may continue with the downgraded version.
+     *
+     * This message is also sent if the client included unrecognized protocol options
+     * (keys beginning with `_pq_.`) in the startup packet.
+     *
+     * @property newestMinorVersion      The highest minor protocol version the server supports.
+     * @property unrecognizedOptions     Names of startup options the server did not recognize.
+     */
+    data class NegotiateProtocolVersion(
+        val newestMinorVersion: Int,
+        val unrecognizedOptions: List<String>,
+    ) : Backend
+
+    /**
+     * Carries the process ID and cancel key of the backend process. Clients store
+     * these values to be able to send a [CancelRequest] later.
+     *
+     * Since protocol 3.2 the cancel key is variable-length (4–256 bytes). When connected
+     * to a protocol 3.0 server the key is always 4 bytes (the fixed `secretKey` integer).
      *
      * @property processId Backend process ID.
-     * @property secretKey Backend secret key.
+     * @property cancelKey Opaque variable-length cancel key (4–256 bytes).
      */
     data class BackendKeyData(
         val processId: Int,
-        val secretKey: Int,
-    ) : Backend
+        val cancelKey: ByteArray,
+    ) : Backend {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is BackendKeyData) return false
+            return processId == other.processId && cancelKey.contentEquals(other.cancelKey)
+        }
+
+        override fun hashCode(): Int {
+            var result = processId
+            result = 31 * result + cancelKey.contentHashCode()
+            return result
+        }
+    }
 
     /**
      * Sent by the server when it is ready to accept the next query or command.

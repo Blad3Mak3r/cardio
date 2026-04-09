@@ -10,7 +10,7 @@ import kotlinx.io.readByteArray
  * or directly to a [ByteWriteChannel].
  *
  * Each [PgMessage.Frontend] variant is serialized according to the
- * PostgreSQL frontend/backend protocol (version 3.0).
+ * PostgreSQL frontend/backend protocol (version 3.0 / 3.2).
  */
 object PgMessageWriter {
 
@@ -68,10 +68,10 @@ object PgMessageWriter {
             writeInt(msg.maxRows)
         }
         is PgMessage.CancelRequest       -> {
-            writeInt(16)
+            writeInt(4 + 4 + 4 + msg.cancelKey.size)
             writeInt(80877102)
             writeInt(msg.processId)
-            writeInt(msg.secretKey)
+            write(msg.cancelKey)
         }
         PgMessage.Sync                   -> writeEmpty('S')
         PgMessage.Flush                  -> writeEmpty('H')
@@ -83,14 +83,14 @@ object PgMessageWriter {
      *
      * Unlike other frontend messages, the startup message has no leading type byte.
      * It begins with a 4-byte total length, followed by the protocol version
-     * (3.0 = 196608), the connection parameters as null-terminated key/value pairs,
+     * (3.2 = 196610), the connection parameters as null-terminated key/value pairs,
      * and a final null byte to terminate the parameter list.
      *
      * @param msg The startup message containing username, database, and optional parameters.
      */
     private fun Buffer.writeStartup(msg: PgMessage.StartupMessage) {
         val body = Buffer().apply {
-            writeInt(196608)
+            writeInt(196610)  // protocol version 3.2 (major=3, minor=2)
             writeCString("user");     writeCString(msg.username)
             writeCString("database"); writeCString(msg.database)
             msg.params.forEach { (k, v) -> writeCString(k); writeCString(v) }

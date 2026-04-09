@@ -48,7 +48,8 @@ import kotlin.coroutines.CoroutineContext
 
 /**
  * A single, fully-functional PostgreSQL database connection implementing the
- * PostgreSQL wire protocol (frontend/backend protocol v3).
+ * PostgreSQL wire protocol (frontend/backend protocol v3, with protocol 3.2
+ * negotiation support introduced in PostgreSQL 18).
  *
  * **Lifecycle:** Obtain instances through the [connect] factory function (or via
  * [ConnectionPool], which manages a pool of connections).  The connection is usable
@@ -173,8 +174,8 @@ class Connection private constructor(
     var processId: Int = 0
         private set
 
-    /** The secret cancel key for this connection, as reported in the `BackendKeyData` startup message. Used together with [processId] for query cancellation. */
-    var secretKey: Int = 0
+    /** The secret cancel key for this connection, as reported in the `BackendKeyData` startup message. Used together with [processId] for query cancellation. Since protocol 3.2 the key is variable-length (4–256 bytes). */
+    var cancelKey: ByteArray = ByteArray(0)
         private set
 
     /** Server runtime parameters received during the startup handshake (e.g. `server_version`, `client_encoding`, `TimeZone`). Updated as `ParameterStatus` messages arrive. */
@@ -394,12 +395,13 @@ class Connection private constructor(
 
         loop@ while (true) {
             when (val msg = PgMessageReader.read(readChannel)) {
-                is PgMessage.Authentication  -> handleAuth(msg)
-                is PgMessage.ParameterStatus -> serverParams[msg.name] = msg.value
-                is PgMessage.BackendKeyData  -> { processId = msg.processId; secretKey = msg.secretKey }
-                is PgMessage.ReadyForQuery   -> { state = State.Ready; break@loop }
-                is PgMessage.ErrorResponse   -> throw msg.toException()
-                is PgMessage.NoticeResponse  -> Unit
+                is PgMessage.Authentication          -> handleAuth(msg)
+                is PgMessage.ParameterStatus         -> serverParams[msg.name] = msg.value
+                is PgMessage.BackendKeyData          -> { processId = msg.processId; cancelKey = msg.cancelKey }
+                is PgMessage.NegotiateProtocolVersion -> Unit  // server downgraded; continue with its supported version
+                is PgMessage.ReadyForQuery           -> { state = State.Ready; break@loop }
+                is PgMessage.ErrorResponse           -> throw msg.toException()
+                is PgMessage.NoticeResponse          -> Unit
                 else -> error("Unexpected message during startup: ${msg::class.simpleName}")
             }
         }
