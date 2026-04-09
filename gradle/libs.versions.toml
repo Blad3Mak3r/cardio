@@ -4,6 +4,7 @@
 [versions]
 coroutines = "1.10.2"
 datetime = "0.7.1"
+dokka = "2.2.0"
 junit-jupiter-engine = "6.0.3"
 kotlin = "2.3.10"
 ktor = "3.4.1"
@@ -25,3 +26,4 @@ ktor-network-tls = { module = "io.ktor:ktor-network-tls", version.ref = "ktor" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "mavenPublish" }
+dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
