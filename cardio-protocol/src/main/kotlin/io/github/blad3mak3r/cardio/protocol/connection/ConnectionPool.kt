@@ -24,6 +24,29 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
+/**
+ * Coroutine-based connection pool that manages a fixed-size set of [Connection] instances.
+ *
+ * The pool:
+ * - Warms up to [Configuration.minSize] connections on creation.
+ * - Limits concurrency to [Configuration.maxSize] via a [kotlinx.coroutines.sync.Semaphore].
+ * - Reuses idle connections from an internal channel; creates new ones on demand.
+ * - Runs background tasks for health-checking and idle-connection eviction.
+ * - Automatically replenishes connections when the count drops below [Configuration.minSize].
+ *
+ * Obtain a connection with [use] (raw access) or [transaction] (automatic BEGIN/COMMIT/ROLLBACK).
+ * The pool-level [query] and [execute] shortcuts delegate to [use] without an explicit transaction.
+ *
+ * All public methods are `suspend` and coroutine-safe. Multiple coroutines may acquire connections
+ * concurrently; the semaphore ensures that no more than [Configuration.maxSize] are active at once.
+ *
+ * @param configuration Pool and connection settings.
+ * @param scope         Coroutine scope used for background tasks. Defaults to a scope backed by
+ *                      [kotlinx.coroutines.Dispatchers.IO] + [kotlinx.coroutines.SupervisorJob].
+ *
+ * @see Configuration
+ * @see Stats
+ */
 class ConnectionPool(
     private val configuration: Configuration,
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -32,6 +55,19 @@ class ConnectionPool(
         private val logger = LoggerFactory.getLogger("ConnectionPool")
     }
 
+    /**
+     * Pool and connection configuration.
+     *
+     * @param connect                Underlying [Connection.Configuration] used for every new connection.
+     * @param maxSize                Maximum number of simultaneous connections. Defaults to `10`.
+     * @param minSize                Minimum number of connections kept alive (warm-up / replenishment). Defaults to `2`.
+     * @param acquireTimeout         Maximum time a caller waits for a connection before [PgPoolTimeoutException] is thrown. Defaults to 30 seconds.
+     * @param idleTimeout            Time after which an idle connection is eligible for eviction by the idle reaper. Defaults to 600 seconds.
+     * @param healthCheckInterval    Interval between background health-check sweeps. Defaults to 30 seconds.
+     * @param maxReconnectAttempts   Number of attempts to create a new connection before raising [PgConnectionCreationException]. Defaults to `5`.
+     * @param reconnectBackoff       Base back-off duration between reconnect attempts (exponentially doubled per attempt). Defaults to 500 ms.
+     * @param registry               Codec registry shared by all connections in the pool. Defaults to [TypeCodecRegistry.Default].
+     */
     data class Configuration(
         val connect: Connection.Configuration,
 
@@ -54,6 +90,19 @@ class ConnectionPool(
     /** Pairs a connection with the timestamp at which it was placed into the idle pool. */
     private data class IdleEntry(val conn: Connection, val idleSince: Long)
 
+    /**
+     * Snapshot of the pool's current operational statistics.
+     *
+     * @param totalConnections  Total number of open connections (active + idle).
+     * @param activeConnections Number of connections currently checked out inside a [use] block.
+     * @param idleConnections   Number of connections currently waiting in the idle pool.
+     * @param pendingAcquires   Number of callers currently waiting to acquire a connection.
+     * @param totalAcquired     Cumulative count of times a connection was handed out since pool creation.
+     * @param totalReleased     Cumulative count of times a connection was returned to the idle pool.
+     * @param totalCreated      Cumulative count of connections created since pool creation.
+     * @param totalDestroyed    Cumulative count of connections destroyed (evicted, failed, or closed) since pool creation.
+     * @param totalErrors       Cumulative count of connection-creation errors since pool creation.
+     */
     data class Stats(
         val totalConnections:  Int,
         val activeConnections: Int,
@@ -91,6 +140,7 @@ class ConnectionPool(
      */
     private val allConnections: MutableSet<Connection> = ConcurrentHashMap.newKeySet()
 
+    /** Returns a point-in-time snapshot of the pool's operational statistics. */
     val stats: Stats
         get() {
             val total  = totalConns.get()
@@ -114,6 +164,17 @@ class ConnectionPool(
         scope.launch { runIdleReaper() }
     }
 
+    /**
+     * Acquires a connection from the pool, executes [block] with it, then returns the
+     * connection to the idle pool (or destroys it if it is in a failed state).
+     *
+     * Waits up to [Configuration.acquireTimeout] for a free connection slot.
+     *
+     * @param block Suspending lambda that receives the acquired [Connection].
+     * @return The value returned by [block].
+     * @throws PgPoolTimeoutException if no connection becomes available within [Configuration.acquireTimeout].
+     * @throws IllegalStateException  if the pool has already been [close]d.
+     */
     suspend fun <T> use(block: suspend (Connection) -> T): T {
         pendingAcquires.incrementAndGet()
         return try {
@@ -137,6 +198,15 @@ class ConnectionPool(
         }
     }
 
+    /**
+     * Acquires a connection, begins a PostgreSQL transaction (`BEGIN`), runs [block], and
+     * commits the transaction on success.  If [block] throws any exception the transaction is
+     * automatically rolled back and the exception re-thrown.
+     *
+     * @param block Suspending lambda that receives the [Connection] inside an active transaction.
+     * @return The value returned by [block].
+     * @throws PgPoolTimeoutException if a connection cannot be acquired in time.
+     */
     suspend fun <T> transaction(block: suspend (Connection) -> T): T = use { conn ->
         conn.beginTransaction()
         try {
@@ -149,14 +219,27 @@ class ConnectionPool(
         }
     }
 
-    /** Shortcut: query without explicit transaction. */
+    /**
+     * Acquires a connection and executes [sql] as a query without an explicit transaction.
+     *
+     * @param sql    PostgreSQL query using positional parameters (`$1`, `$2`, …).
+     * @param params Parameter values in the same order as the positional placeholders.
+     * @param mapper Row-to-result transformation applied to each row.
+     * @return List of values produced by [mapper] for every result row.
+     */
     suspend fun <T> query(
         sql: String,
         vararg params: Any?,
         mapper: (Row) -> T,
     ): List<T> = use { it.query(sql = sql, params = params, mapper = mapper) }
 
-    /** Shortcut: execute without explicit transaction. */
+    /**
+     * Acquires a connection and executes [sql] as a DML/DDL command without an explicit transaction.
+     *
+     * @param sql    PostgreSQL statement using positional parameters (`$1`, `$2`, …).
+     * @param params Parameter values in the same order as the positional placeholders.
+     * @return Number of rows affected by the statement.
+     */
     suspend fun execute(
         sql: String,
         vararg params: Any?,
