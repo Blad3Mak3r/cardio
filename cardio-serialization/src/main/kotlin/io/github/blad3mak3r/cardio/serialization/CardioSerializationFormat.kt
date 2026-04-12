@@ -20,7 +20,7 @@ import kotlinx.serialization.serializer
  */
 object CardioSerializationFormat {
     val serializersModule: SerializersModule = SerializersModule {
-        // Aquí el usuario puede registrar serializers custom si necesita
+        // Register contextual serializers here if needed, e.g.:
         // contextual(Uuid::class, UuidSerializer)
     }
 

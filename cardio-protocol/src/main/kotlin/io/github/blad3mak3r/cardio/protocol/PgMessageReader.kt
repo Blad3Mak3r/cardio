@@ -43,7 +43,7 @@ object PgMessageReader {
         when (type.toInt().toChar()) {
             'R'  -> decodeAuthentication(src)
             'S'  -> PgMessage.ParameterStatus(src.readCString(), src.readCString())
-            'K'  -> PgMessage.BackendKeyData(src.readInt(), src.readInt())
+            'K'  -> PgMessage.BackendKeyData(src.readInt(), src.readByteArray(src.size.toInt()))
             'Z'  -> PgMessage.ReadyForQuery(TransactionStatus.fromByte(src.readByte()))
             'T'  -> decodeRowDescription(src)
             'D'  -> decodeDataRow(src)
@@ -57,6 +57,12 @@ object PgMessageReader {
             'N'  -> PgMessage.NoticeResponse(decodeErrorFields(src))
             'A'  -> PgMessage.NotificationResponse(src.readInt(), src.readCString(), src.readCString())
             'I'  -> PgMessage.EmptyQueryResponse
+            'v'  -> {
+                val newestMinorVersion = src.readInt()
+                val numUnrecognized = src.readInt()
+                val unrecognizedOptions = List(numUnrecognized) { src.readCString() }
+                PgMessage.NegotiateProtocolVersion(newestMinorVersion, unrecognizedOptions)
+            }
             else -> error(
                 "Unknown backend message: '${type.toInt().toChar()}' " +
                         "(0x${type.toUByte().toString(16).padStart(2, '0')})"
