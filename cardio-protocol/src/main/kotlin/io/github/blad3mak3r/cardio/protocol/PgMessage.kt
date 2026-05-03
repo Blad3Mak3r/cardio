@@ -148,6 +148,18 @@ sealed interface PgMessage {
     /** Requests the server to flush its output buffer. */
     data object Flush : Frontend
 
+    /**
+     * Extended-query `Close` message. Closes a prepared statement or portal, freeing
+     * any server-side resources associated with it.
+     *
+     * @property target Whether to close a [DescribeTarget.STATEMENT] or [DescribeTarget.PORTAL].
+     * @property name   Name of the target. Empty string refers to the unnamed target.
+     */
+    data class Close(
+        val target: DescribeTarget,
+        val name: String = ""
+    ) : Frontend
+
     /** Instructs the server to close the session gracefully. */
     data object Terminate : Frontend
 
@@ -304,6 +316,13 @@ sealed interface PgMessage {
 
     /** Indicates that a `Close` message was processed successfully. */
     data object CloseComplete : Backend
+
+    /**
+     * Sent by the server when an `Execute` message reached [Execute.maxRows] before the
+     * portal was exhausted.  The portal remains open; the client may send another
+     * [Execute] to fetch more rows.
+     */
+    data object PortalSuspended : Backend
 
     /** Sent in response to a `Describe` message when the portal returns no rows. */
     data object NoData : Backend

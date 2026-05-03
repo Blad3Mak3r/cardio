@@ -51,6 +51,7 @@ object PgMessageReader {
             '1'  -> PgMessage.ParseComplete
             '2'  -> PgMessage.BindComplete
             '3'  -> PgMessage.CloseComplete
+            's'  -> PgMessage.PortalSuspended
             't'  -> PgMessage.ParameterDescription(List(src.readShort().toInt()) { src.readInt() })
             'n'  -> PgMessage.NoData
             'E'  -> PgMessage.ErrorResponse(decodeErrorFields(src))

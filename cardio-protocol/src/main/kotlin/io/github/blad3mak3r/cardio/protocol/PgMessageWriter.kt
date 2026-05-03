@@ -63,6 +63,10 @@ object PgMessageWriter {
             writeByte(msg.target.byte)
             writeCString(msg.name)
         }
+        is PgMessage.Close               -> withType('C') {
+            writeByte(msg.target.byte)
+            writeCString(msg.name)
+        }
         is PgMessage.Execute             -> withType('E') {
             writeCString(msg.portalName)
             writeInt(msg.maxRows)
