@@ -4,6 +4,9 @@ import io.github.blad3mak3r.cardio.protocol.Row
 import io.github.blad3mak3r.cardio.protocol.codec.TypeCodecRegistry
 import io.github.blad3mak3r.cardio.protocol.connection.Connection
 import io.github.blad3mak3r.cardio.protocol.connection.ConnectionPool
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -121,6 +124,9 @@ open class Cardio(
     /**
      * Executes [sql] and maps every result row to a value using [mapper].
      *
+     * If called within an active [inTransaction] block, the query automatically runs on the
+     * transaction's connection without requiring an explicit `tx` parameter.
+     *
      * @param sql    PostgreSQL query using positional parameters (`$1`, `$2`, …).
      * @param params Parameter values in positional order.
      * @param mapper Transformation applied to each result row.
@@ -128,13 +134,21 @@ open class Cardio(
      */
     suspend fun <T> query(
         sql: String,
-        vararg params: Any?,
-        mapper: (Row) -> T
-    ) = pool.query(sql = sql, params = params, mapper = mapper)
+        params: List<Any?> = emptyList(),
+        mapper: (Row) -> T,
+    ): List<T> {
+        val txCtx = currentCoroutineContext()[CardioTransaction.Context]
+        return if (txCtx != null) txCtx.transaction.query(sql, params, mapper)
+        else pool.query(sql = sql, params = params, mapper = mapper)
+    }
 
     /**
      * Executes [sql] and returns the first result row mapped by [mapper], or `null` if the
      * result set is empty.
+     *
+     * Optimized at the wire level — sends `Execute(maxRows = 1)` so the server streams at most
+     * one row.  If called within an active [inTransaction] block, runs on the transaction's
+     * connection automatically.
      *
      * @param sql    PostgreSQL query using positional parameters.
      * @param params Parameter values in positional order.
@@ -143,12 +157,19 @@ open class Cardio(
      */
     suspend fun <T> queryOne(
         sql: String,
-        vararg params: Any?,
+        params: List<Any?> = emptyList(),
         mapper: (Row) -> T,
-    ): T? = query(sql, *params, mapper = mapper).firstOrNull()
+    ): T? {
+        val txCtx = currentCoroutineContext()[CardioTransaction.Context]
+        return if (txCtx != null) txCtx.transaction.queryOne(sql, params, mapper)
+        else pool.use { it.queryOne(sql = sql, params = params, mapper = mapper) }
+    }
 
     /**
      * Executes [sql] as a DML/DDL statement and returns the number of affected rows.
+     *
+     * If called within an active [inTransaction] block, the statement automatically runs on
+     * the transaction's connection.
      *
      * @param sql    PostgreSQL statement using positional parameters (`$1`, `$2`, …).
      * @param params Parameter values in positional order.
@@ -156,18 +177,79 @@ open class Cardio(
      */
     suspend fun execute(
         sql: String,
-        vararg params: Any?,
-    ) = pool.execute(sql = sql, params = params)
+        params: List<Any?> = emptyList(),
+    ): Long {
+        val txCtx = currentCoroutineContext()[CardioTransaction.Context]
+        return if (txCtx != null) txCtx.transaction.execute(sql, params)
+        else pool.execute(sql = sql, params = params)
+    }
+
+    /**
+     * Executes a DML statement with a `RETURNING` clause and maps each returned row using [mapper].
+     *
+     * If called within an active [inTransaction] block, runs on the transaction's connection
+     * automatically.
+     *
+     * @param sql    PostgreSQL statement with `RETURNING` using positional parameters.
+     * @param params Parameter values in positional order.
+     * @param mapper Transformation applied to each returned row.
+     * @return List of values produced by [mapper], one per returned row.
+     */
+    suspend fun <T> executeReturning(
+        sql: String,
+        params: List<Any?> = emptyList(),
+        mapper: (Row) -> T,
+    ): List<T> {
+        val txCtx = currentCoroutineContext()[CardioTransaction.Context]
+        return if (txCtx != null) txCtx.transaction.executeReturning(sql, params, mapper)
+        else pool.executeReturning(sql = sql, params = params, mapper = mapper)
+    }
+
+    /**
+     * Returns a cold [Flow] that streams result rows one chunk at a time using a
+     * wire-level cursor (`Execute(maxRows = chunkSize)`).
+     *
+     * Suitable for large result sets where loading all rows into memory at once is
+     * undesirable.  A connection is exclusively held for the duration of collection.
+     *
+     * Note: this method does **not** participate in [inTransaction] auto-routing because
+     * it is not a suspending function.
+     *
+     * @param sql       PostgreSQL query using positional parameters.
+     * @param params    Query parameter values.
+     * @param chunkSize Number of rows to fetch per `Execute` round-trip. Defaults to `100`.
+     * @param mapper    Function applied to each [Row].
+     * @return A cold [Flow] that emits mapped values as rows arrive from the server.
+     */
+    fun <T> queryFlow(
+        sql: String,
+        params: List<Any?> = emptyList(),
+        chunkSize: Int = 100,
+        mapper: (Row) -> T,
+    ): Flow<T> = pool.queryFlow(sql = sql, params = params, chunkSize = chunkSize, mapper = mapper)
 
     /**
      * Acquires a connection, begins a transaction, and runs [block] inside it.
      * Commits on success; rolls back automatically if [block] throws.
      *
-     * @param block Suspending lambda that receives a [CardioTransaction] handle.
+     * Nested calls to [inTransaction] on the same coroutine (or child coroutines that inherit
+     * the same [CoroutineContext][kotlin.coroutines.CoroutineContext]) automatically join the
+     * existing transaction rather than starting a new one.
+     *
+     * Inside the block, calls to [query], [execute], [executeReturning], and [queryOne] on
+     * this [Cardio] instance automatically route to the active transaction.
+     *
+     * @param block Suspending extension lambda on [CardioTransaction].
      * @return The value returned by [block].
      */
-    suspend fun <T> inTransaction(block: suspend (CardioTransaction) -> T): T =
-        pool.transaction { conn -> block(CardioTransaction(conn)) }
+    suspend fun <T> inTransaction(block: suspend CardioTransaction.() -> T): T {
+        val existing = currentCoroutineContext()[CardioTransaction.Context]
+        if (existing != null) return existing.transaction.block()
+        return pool.transaction { conn ->
+            val tx = CardioTransaction(conn)
+            withContext(CardioTransaction.Context(tx)) { tx.block() }
+        }
+    }
 
     /**
      * Acquires a connection and passes it (as a [CardioTransaction] wrapper) to [block].

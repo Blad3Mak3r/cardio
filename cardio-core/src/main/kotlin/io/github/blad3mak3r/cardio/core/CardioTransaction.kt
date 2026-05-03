@@ -3,6 +3,8 @@ package io.github.blad3mak3r.cardio.core
 import io.github.blad3mak3r.cardio.protocol.DatabaseOperations
 import io.github.blad3mak3r.cardio.protocol.Row
 import io.github.blad3mak3r.cardio.protocol.connection.Connection
+import kotlinx.coroutines.flow.Flow
+import kotlin.coroutines.CoroutineContext
 
 /**
  * Handle for a live PostgreSQL transaction, exposing [DatabaseOperations] for the duration
@@ -19,16 +21,46 @@ import io.github.blad3mak3r.cardio.protocol.connection.Connection
 class CardioTransaction internal constructor(
     private val conn: Connection,
 ) : DatabaseOperations {
+
+    /**
+     * [CoroutineContext.Element] that carries an active [CardioTransaction] through the coroutine
+     * hierarchy.  Set by [Cardio.inTransaction] so that nested calls and [Cardio] method
+     * invocations can automatically join the same transaction without an explicit parameter.
+     */
+    class Context(val transaction: CardioTransaction) : CoroutineContext.Element {
+        override val key: CoroutineContext.Key<*> = Key
+        companion object Key : CoroutineContext.Key<Context>
+    }
+
     override suspend fun <T> query(
         sql: String,
-        vararg params: Any?,
+        params: List<Any?>,
         mapper: (Row) -> T,
-    ): List<T> = conn.query(sql, *params, mapper = mapper)
+    ): List<T> = conn.query(sql, params, mapper)
+
+    override suspend fun <T> queryOne(
+        sql: String,
+        params: List<Any?>,
+        mapper: (Row) -> T,
+    ): T? = conn.queryOne(sql, params, mapper)
 
     override suspend fun execute(
         sql: String,
-        vararg params: Any?,
-    ): Long = conn.execute(sql, *params)
+        params: List<Any?>,
+    ): Long = conn.execute(sql, params)
+
+    override suspend fun <T> executeReturning(
+        sql: String,
+        params: List<Any?>,
+        mapper: (Row) -> T,
+    ): List<T> = conn.executeReturning(sql, params, mapper)
+
+    override fun <T> queryFlow(
+        sql: String,
+        params: List<Any?>,
+        chunkSize: Int,
+        mapper: (Row) -> T,
+    ): Flow<T> = conn.queryFlow(sql, params, chunkSize, mapper)
 
     /** Explicitly commits the current transaction by sending `COMMIT` to the server. */
     suspend fun commit() = conn.commitTransaction()
