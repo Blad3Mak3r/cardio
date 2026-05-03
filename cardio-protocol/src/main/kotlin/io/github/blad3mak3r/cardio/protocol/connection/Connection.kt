@@ -24,6 +24,8 @@ import io.ktor.utils.io.writeFully
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
@@ -190,7 +192,7 @@ class Connection private constructor(
 
     override suspend fun <T> query(
         sql: String,
-        vararg params: Any?,
+        params: List<Any?>,
         mapper: (Row) -> T
     ): List<T> = mutex.withLock {
         check(state == State.Ready || state == State.InTransaction) {
@@ -216,9 +218,35 @@ class Connection private constructor(
         }
     }
 
+    override suspend fun <T> queryOne(
+        sql: String,
+        params: List<Any?>,
+        mapper: (Row) -> T
+    ): T? = mutex.withLock {
+        check(state == State.Ready || state == State.InTransaction) {
+            "Connection is not ready for queries (state = $state)"
+        }
+
+        val prev = state
+        state = State.InQuery
+        try {
+            executeQueryOne(sql = sql, params = params, mapper = mapper)
+        } catch (e: PgException) {
+            state = prev
+            throw e
+        } catch (e: Throwable) {
+            state = State.Failed(e)
+            throw e
+        } finally {
+            if (state == State.InQuery) {
+                state = prev
+            }
+        }
+    }
+
     override suspend fun execute(
         sql: String,
-        vararg params: Any?
+        params: List<Any?>,
     ): Long = mutex.withLock {
         check(state == State.Ready || state == State.InTransaction) {
             "Connection not ready (state=$state)"
@@ -229,6 +257,105 @@ class Connection private constructor(
 
         try {
             executeCommand(sql, params)
+        } catch (e: PgException) {
+            state = prev
+            throw e
+        } catch (e: Throwable) {
+            state = State.Failed(e)
+            throw e
+        } finally {
+            if (state == State.InQuery) {
+                state = prev
+            }
+        }
+    }
+
+    override suspend fun <T> executeReturning(
+        sql: String,
+        params: List<Any?>,
+        mapper: (Row) -> T
+    ): List<T> = mutex.withLock {
+        check(state == State.Ready || state == State.InTransaction) {
+            "Connection is not ready for queries (state = $state)"
+        }
+
+        val prev = state
+        state = State.InQuery
+        try {
+            executeQuery(sql = sql, params = params, mapper = mapper)
+        } catch (e: PgException) {
+            state = prev
+            throw e
+        } catch (e: Throwable) {
+            state = State.Failed(e)
+            throw e
+        } finally {
+            if (state == State.InQuery) {
+                state = prev
+            }
+        }
+    }
+
+    /**
+     * Returns a cold [Flow] backed by a wire-level cursor. The connection must have been
+     * exclusively borrowed from the pool via [ConnectionPool.borrowConnection]; it is NOT
+     * protected by the internal mutex so that [kotlinx.coroutines.flow.FlowCollector.emit]
+     * can suspend freely without holding the lock.
+     *
+     * @param sql       SQL query string with positional parameters.
+     * @param params    Query parameter values.
+     * @param chunkSize Number of rows to fetch per `Execute` round-trip.
+     * @param mapper    Row transformation function.
+     */
+    override fun <T> queryFlow(
+        sql: String,
+        params: List<Any?>,
+        chunkSize: Int,
+        mapper: (Row) -> T
+    ): Flow<T> = flow {
+        check(state == State.Ready || state == State.InTransaction) {
+            "Connection is not ready for queries (state = $state)"
+        }
+
+        val prev = state
+        state = State.InQuery
+        try {
+            sendExtendedQuery(sql = sql, params = params, maxRows = chunkSize)
+
+            var rowDescription: PgMessage.RowDescription? = null
+
+            loop@ while (true) {
+                when (val msg = PgMessageReader.read(readChannel)) {
+                    is PgMessage.ParseComplete,
+                    is PgMessage.BindComplete,
+                    is PgMessage.ParameterDescription -> Unit
+                    is PgMessage.RowDescription -> rowDescription = msg
+                    is PgMessage.DataRow -> {
+                        val desc = checkNotNull(rowDescription) {
+                            "DataRow received before RowDescription"
+                        }
+                        emit(mapper(Row(desc, msg, registry)))
+                    }
+                    is PgMessage.PortalSuspended -> {
+                        // Fetch the next chunk
+                        val bytes = PgMessageWriter.encode(PgMessage.Execute(maxRows = chunkSize)) +
+                                PgMessageWriter.encode(PgMessage.Sync)
+                        writeChannel.writeFully(bytes)
+                        writeChannel.flush()
+                    }
+                    is PgMessage.CommandComplete -> Unit
+                    is PgMessage.ReadyForQuery -> {
+                        updateTransactionState(msg.status)
+                        break@loop
+                    }
+                    is PgMessage.ErrorResponse -> {
+                        drainUntilReady()
+                        throw msg.toException()
+                    }
+                    is PgMessage.NoticeResponse -> Unit
+                    else -> error("Unexpected message during queryFlow: ${msg::class.simpleName}")
+                }
+            }
         } catch (e: PgException) {
             state = prev
             throw e
@@ -271,7 +398,7 @@ class Connection private constructor(
 
     private suspend fun <T> executeQuery(
         sql: String,
-        params: Array<out Any?>,
+        params: List<Any?>,
         mapper: (Row) -> T
     ): List<T> {
         sendExtendedQuery(sql = sql, params = params)
@@ -308,9 +435,54 @@ class Connection private constructor(
         return results
     }
 
+    private suspend fun <T> executeQueryOne(
+        sql: String,
+        params: List<Any?>,
+        mapper: (Row) -> T
+    ): T? {
+        // Send Execute(maxRows=1) so the server only streams a single row
+        sendExtendedQuery(sql = sql, params = params, maxRows = 1)
+
+        var result: T? = null
+        var rowDescription: PgMessage.RowDescription? = null
+
+        loop@ while (true) {
+            when (val msg = PgMessageReader.read(readChannel)) {
+                is PgMessage.ParseComplete,
+                is PgMessage.BindComplete,
+                is PgMessage.ParameterDescription -> Unit
+                is PgMessage.RowDescription -> rowDescription = msg
+                is PgMessage.DataRow -> {
+                    if (result == null) {
+                        val desc = checkNotNull(rowDescription) {
+                            "DataRow received before RowDescription"
+                        }
+                        result = mapper(Row(desc, msg, registry))
+                    }
+                    // Ignore any further DataRows (safety net; shouldn't occur with maxRows=1)
+                }
+                // Portal suspended after 1 row — the Sync we sent will produce ReadyForQuery
+                is PgMessage.PortalSuspended -> Unit
+                is PgMessage.CommandComplete -> Unit
+                is PgMessage.ReadyForQuery -> {
+                    updateTransactionState(msg.status)
+                    break@loop
+                }
+                is PgMessage.ErrorResponse -> {
+                    drainUntilReady()
+                    throw msg.toException()
+                }
+                is PgMessage.NoticeResponse -> Unit
+                else -> error("Unexpected message during queryOne: ${msg::class.simpleName}")
+            }
+        }
+
+        return result
+    }
+
     private suspend fun executeCommand(
         sql: String,
-        params: Array<out Any?>,
+        params: List<Any?>,
     ): Long {
         sendExtendedQuery(sql, params)
 
@@ -339,8 +511,8 @@ class Connection private constructor(
         return rowsAffected
     }
 
-    // Parse + Bind + Describe(Portal) + Execute + Sync en un solo flush
-    private suspend fun sendExtendedQuery(sql: String, params: Array<out Any?>) {
+    // Parse + Bind + Describe(Portal) + Execute(maxRows) + Sync in a single flush
+    private suspend fun sendExtendedQuery(sql: String, params: List<Any?>, maxRows: Int = 0) {
         val resolved  = params.map { it.toParam() }
         val encoded   = resolved.map { it.encode() }
         val paramOids = resolved.map { it.oid }
@@ -348,15 +520,14 @@ class Connection private constructor(
         val bytes = PgMessageWriter.encode(PgMessage.Parse(sql = sql, paramTypeOids = paramOids)) +
                 PgMessageWriter.encode(PgMessage.Bind(params = encoded, resultFormat = ResultFormat.BINARY)) +
                 PgMessageWriter.encode(PgMessage.Describe(target = DescribeTarget.PORTAL)) +
-                PgMessageWriter.encode(PgMessage.Execute()) +
+                PgMessageWriter.encode(PgMessage.Execute(maxRows = maxRows)) +
                 PgMessageWriter.encode(PgMessage.Sync)
 
         writeChannel.writeFully(bytes)
         writeChannel.flush()
     }
 
-    // Consume mensajes hasta ReadyForQuery — necesario tras un error
-    // para dejar el canal en estado limpio
+    // Consume messages until ReadyForQuery — needed after an error to leave the channel clean
     private suspend fun drainUntilReady() {
         try {
             while (true) {
@@ -434,7 +605,7 @@ class Connection private constructor(
             .joinToString("") { "%02x".format(it) }
 
     private suspend fun performScram(mechanism: String) {
-        // ── Paso 1: client-first-message ────────────────────────────────────
+        // ── Step 1: client-first-message ────────────────────────────────────
         val clientNonce            = generateNonce()
         val gs2Header              = "n,,"
         val clientFirstMessageBare = "n=,r=$clientNonce"
@@ -445,7 +616,7 @@ class Connection private constructor(
             clientFirstMessage = clientFirstMessage.toByteArray(Charsets.UTF_8),
         ))
 
-        // ── Paso 2: server-first-message ────────────────────────────────────
+        // ── Step 2: server-first-message ────────────────────────────────────
         val serverFirst = when (val msg = PgMessageReader.read(readChannel)) {
             is PgMessage.Authentication.SASLContinue -> msg.data.toString(Charsets.UTF_8)
             is PgMessage.ErrorResponse               -> throw msg.toException()
@@ -462,7 +633,7 @@ class Connection private constructor(
             "SCRAM: server nonce doesn't start with client nonce — possible MITM"
         }
 
-        // ── Paso 3: client-final-message ────────────────────────────────────
+        // ── Step 3: client-final-message ────────────────────────────────────
         val channelBinding          = java.util.Base64.getEncoder()
             .encodeToString(gs2Header.toByteArray(Charsets.UTF_8))
         val clientFinalWithoutProof = "c=$channelBinding,r=$serverNonce"
@@ -481,7 +652,7 @@ class Connection private constructor(
             clientFinalMessage = "$clientFinalWithoutProof,p=$proof".toByteArray(Charsets.UTF_8),
         ))
 
-        // ── Paso 4: server-final — verificar firma del servidor ──────────────
+        // ── Step 4: server-final — verify server signature ──────────────────
         when (val msg = PgMessageReader.read(readChannel)) {
             is PgMessage.Authentication.SASLFinal -> {
                 val finalAttrs = parseScramParams(msg.data.toString(Charsets.UTF_8))
@@ -495,7 +666,7 @@ class Connection private constructor(
             else -> error("Expected SASLFinal, got ${msg::class.simpleName}")
         }
 
-        // ── Paso 5: Authentication.Ok ────────────────────────────────────────
+        // ── Step 5: Authentication.Ok ────────────────────────────────────────
         when (val msg = PgMessageReader.read(readChannel)) {
             is PgMessage.Authentication.Ok -> Unit
             is PgMessage.ErrorResponse     -> throw msg.toException()
@@ -571,7 +742,7 @@ class Connection private constructor(
          * @throws PgConnectException if the TCP connection or startup handshake fails or times out.
          * @throws PgSslException     if SSL negotiation fails (server declined a required mode,
          *                            certificate validation failed, or hostname mismatch).
-         * @throws PgException        if the server rejects the connection (wrong credentials, etc.).
+         * @throws io.github.blad3mak3r.cardio.protocol.PgException if the server rejects the connection (wrong credentials, etc.).
          */
         suspend fun connect(
             config: Configuration,

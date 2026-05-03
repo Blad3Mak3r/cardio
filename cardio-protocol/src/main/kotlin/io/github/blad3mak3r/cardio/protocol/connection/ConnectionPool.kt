@@ -11,6 +11,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -229,7 +231,7 @@ class ConnectionPool(
      */
     suspend fun <T> query(
         sql: String,
-        vararg params: Any?,
+        params: List<Any?> = emptyList(),
         mapper: (Row) -> T,
     ): List<T> = use { it.query(sql = sql, params = params, mapper = mapper) }
 
@@ -242,8 +244,49 @@ class ConnectionPool(
      */
     suspend fun execute(
         sql: String,
-        vararg params: Any?,
+        params: List<Any?> = emptyList(),
     ): Long = use { it.execute(sql = sql, params = params) }
+
+    /**
+     * Acquires a connection and executes [sql] as a DML statement with a `RETURNING` clause.
+     *
+     * @param sql    PostgreSQL statement with `RETURNING` using positional parameters.
+     * @param params Parameter values in the same order as the positional placeholders.
+     * @param mapper Row-to-result transformation applied to each returned row.
+     * @return List of values produced by [mapper] for every returned row.
+     */
+    suspend fun <T> executeReturning(
+        sql: String,
+        params: List<Any?> = emptyList(),
+        mapper: (Row) -> T,
+    ): List<T> = use { it.executeReturning(sql = sql, params = params, mapper = mapper) }
+
+    /**
+     * Returns a cold [Flow] that streams query results using a wire-level cursor.
+     *
+     * A connection is exclusively borrowed for the entire duration of flow collection
+     * and released in the `finally` block, regardless of cancellation or error.
+     *
+     * @param sql       PostgreSQL query using positional parameters.
+     * @param params    Parameter values.
+     * @param chunkSize Number of rows fetched per `Execute` round-trip. Defaults to `100`.
+     * @param mapper    Row-to-result transformation.
+     * @return A cold [Flow] emitting mapped values as rows arrive from the server.
+     */
+    fun <T> queryFlow(
+        sql: String,
+        params: List<Any?> = emptyList(),
+        chunkSize: Int = 100,
+        mapper: (Row) -> T,
+    ): Flow<T> = flow {
+        val conn = borrowConnection()
+        try {
+            conn.queryFlow(sql = sql, params = params, chunkSize = chunkSize, mapper = mapper)
+                .collect { emit(it) }
+        } finally {
+            returnConnection(conn)
+        }
+    }
 
     /**
      * Verifies that at least one connection can be established by acquiring and immediately
@@ -270,6 +313,42 @@ class ConnectionPool(
             runCatching { conn.close() }
             totalConns.decrementAndGet()
             totalDestroyed.incrementAndGet()
+        }
+    }
+
+    /**
+     * Acquires a connection from the pool for exclusive use by a [Flow] collector.
+     *
+     * Unlike [use], this does NOT wrap the operation in a timeout for the collection phase —
+     * only the initial acquire is bounded by [Configuration.acquireTimeout].
+     * Callers **must** call [returnConnection] in a `finally` block.
+     */
+    internal suspend fun borrowConnection(): Connection {
+        pendingAcquires.incrementAndGet()
+        try {
+            withTimeout(configuration.acquireTimeout) {
+                semaphore.acquire()
+            }
+        } catch (e: TimeoutCancellationException) {
+            pendingAcquires.decrementAndGet()
+            throw PgPoolTimeoutException(
+                configuration.acquireTimeout, configuration.maxSize, pendingAcquires.get()
+            )
+        }
+        pendingAcquires.decrementAndGet()
+        check(!closed.get()) { "Connection pool is closed" }
+        return getOrCreate()
+    }
+
+    /**
+     * Returns a connection previously obtained via [borrowConnection] to the idle pool
+     * and releases the semaphore permit.
+     */
+    internal suspend fun returnConnection(conn: Connection) {
+        try {
+            returnToPool(conn)
+        } finally {
+            semaphore.release()
         }
     }
 
