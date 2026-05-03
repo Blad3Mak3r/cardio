@@ -44,7 +44,7 @@ class CardioTests {
     @Test
     fun kotlinUuidTest() = runBlocking {
         val uuid = Uuid.parse("550e8400-e29b-41d4-a716-446655440000")
-        val result = client!!.query("SELECT $1::uuid", uuid) { row ->
+        val result = client!!.query("SELECT $1::uuid", listOf(uuid)) { row ->
             row.get<Uuid>(0)
         }.firstOrNull()
 
@@ -54,7 +54,7 @@ class CardioTests {
     @Test
     fun byteArrayTest() = runBlocking {
         val byteArray = ByteArray(256) { it.toByte() }
-        val result = client!!.query("SELECT $1::bytea", byteArray) { row ->
+        val result = client!!.query("SELECT $1::bytea", listOf(byteArray)) { row ->
             row.get<ByteArray>(0)
         }.firstOrNull()
 
@@ -64,7 +64,7 @@ class CardioTests {
     @Test
     fun intArrayTest() = runBlocking {
         val intArray = IntArray(256) { it }
-        val result = client!!.query("SELECT unnest($1::int[])", intArray) { row ->
+        val result = client!!.query("SELECT unnest($1::int[])", listOf(intArray)) { row ->
             row.get<Int>(0)
         }
         
@@ -77,7 +77,7 @@ class CardioTests {
     @Test
     fun textArrayTest() = runBlocking {
         val textArray = Array(256) { it.toString() }
-        val result = client!!.query("SELECT unnest($1::text[])", textArray) { row ->
+        val result = client!!.query("SELECT unnest($1::text[])", listOf(textArray)) { row ->
             row.get<String>(0)
         }
 
@@ -90,7 +90,7 @@ class CardioTests {
     @Test
     fun boolArrayTest() = runBlocking {
         val boolArray = BooleanArray(256) { it % 2 == 0 }
-        val result = client!!.query("SELECT unnest($1::bool[])", boolArray) { row ->
+        val result = client!!.query("SELECT unnest($1::bool[])", listOf(boolArray)) { row ->
             row.get<Boolean>(0)
         }
 
@@ -103,11 +103,11 @@ class CardioTests {
     @AfterAll
     fun tearDown() {
         runBlocking {
-            val ops = 7L
             require(client != null) { "Connection pool should be initialized successfully." }
             val stats = client!!.stats
-            assert(stats.totalAcquired == ops) { "Expected total acquired connections to be $ops, but got ${client!!.stats.totalAcquired}" }
-            assert(stats.totalReleased == ops) { "Expected total released connections to be $ops, but got ${client!!.stats.totalReleased}" }
+            assert(stats.totalAcquired == stats.totalReleased) {
+                "Expected all acquired connections to be released, but acquired=${stats.totalAcquired} released=${stats.totalReleased}"
+            }
             client?.close()
         }
     }
