@@ -19,4 +19,4 @@ class PgException(
     override val message: String,
     val detail: String? = null,
     val hint: String? = null,
-) : Exception("[$severity/$sqlState] $message${detail?.let { " — $it" } ?: ""}")
+) : CardioException("[$severity/$sqlState] $message${detail?.let { " — $it" } ?: ""}")
