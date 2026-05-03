@@ -20,6 +20,8 @@ Cardio is a lightweight Kotlin library for non-blocking PostgreSQL access using 
 - [Usage](#usage)
   - [Create a connection pool](#create-a-connection-pool)
   - [Queries](#queries)
+  - [Execute with RETURNING](#execute-with-returning)
+  - [Streaming (queryFlow)](#streaming-queryflow)
   - [Transactions](#transactions)
   - [Repositories](#repositories)
   - [kotlinx.serialization](#kotlinxserialization)
@@ -27,6 +29,7 @@ Cardio is a lightweight Kotlin library for non-blocking PostgreSQL access using 
   - [Supported types](#supported-types)
   - [Custom codecs](#custom-codecs)
   - [Pool statistics](#pool-statistics)
+  - [Exception hierarchy](#exception-hierarchy)
 - [SSL / TLS](#ssl--tls)
 - [Building](#building)
 
@@ -45,10 +48,12 @@ Cardio is a lightweight Kotlin library for non-blocking PostgreSQL access using 
 - 📊 **Pool observability** — `db.stats` exposes live counters (active/idle connections, total acquired, errors).
 - 🧾 **kotlinx.serialization bridge** — deserialize a `Row` into a `@Serializable` data class in one line via `cardio-serialization`.
 - 🏛️ **Repository pattern** — extend `CardioRepository` to encapsulate all data-access logic cleanly.
-- 🔀 **Transaction support** — first-class `inTransaction` with automatic rollback on failure.
+- 🔀 **Transaction support** — first-class `inTransaction` with automatic rollback on failure, implicit propagation via `CoroutineContext`, and safe nested-call join semantics.
+- 📡 **Streaming results** — `queryFlow` uses wire-level cursors (`Execute(maxRows = N)` + `PortalSuspended`) to stream large result sets without materialising the whole result in memory.
 - 🪶 **Minimal footprint** — runtime dependencies are only `ktor-network` and `kotlinx-coroutines-core`.
 - 🔑 **Full TLS/SSL support** — five SSL modes (`DISABLE`, `PREFER`, `REQUIRE`, `VERIFY_CA`, `VERIFY_FULL`) with proper certificate chain and hostname verification (RFC 2818 / RFC 6125).
 - 📝 **Raw SQL** — plain PostgreSQL with native positional parameters (`$1`, `$2`, …); no ORM magic, no DSL.
+- 🛡️ **Typed exception hierarchy** — all errors extend `CardioException`; catch the specific subtype you care about (`PgException`, `PgConnectException`, `PgSslException`, `PgPoolTimeoutException`).
 
 ---
 
@@ -66,7 +71,7 @@ cardio-protocol       ← PostgreSQL wire protocol 3.0 over Ktor TCP sockets
 
 1. **`cardio-protocol`** opens a raw TCP socket using `ktor-network`, performs authentication (SCRAM-SHA-256 or MD5) and speaks the PostgreSQL extended query protocol (Parse → Bind → Describe → Execute → Sync). All values are transferred in **binary format**, decoded via pluggable `TypeCodec<T>` implementations. The `ConnectionPool` is built entirely on `kotlinx.coroutines` primitives (`Semaphore` + `Channel`).
 
-2. **`cardio-core`** wraps the pool in a clean public API: `Cardio`, `CardioTransaction`, and `CardioRepository`. No reflection except for the optional `Cardio.newCustom<T>` factory.
+2. **`cardio-core`** wraps the pool in a clean public API: `Cardio`, `CardioTransaction`, and `CardioRepository`. Transactions are propagated implicitly through the `CoroutineContext` — any `db.query()` or `db.execute()` call made inside an `inTransaction` block automatically joins the active transaction. No reflection except for the optional `Cardio.newCustom<T>` factory.
 
 3. **`cardio-serialization`** provides a `CardioDecoder` that bridges `@Serializable` data classes to `Row`, so you can deserialize query results without writing manual mapping code.
 
@@ -194,41 +199,190 @@ val db = Cardio.newCustom<MyDb> {
 
 ### Queries
 
+Query parameters are passed as a `List<Any?>`. Omit the list entirely when there are no parameters (defaults to `emptyList()`).
+
 ```kotlin
-val users = db.query("SELECT id, name FROM users WHERE active = $1", true) { row ->
+// No parameters
+val version = db.query("SELECT version()") { row ->
+    row.get<String>(0)
+}
+
+// Single parameter
+val users = db.query("SELECT id, name FROM users WHERE active = $1", listOf(true)) { row ->
     User(
         id   = row.get<Int>("id"),
         name = row.get<String>("name")
     )
 }
+
+// Multiple parameters
+val results = db.query(
+    "SELECT id, name FROM users WHERE role = $1 AND active = $2",
+    listOf("admin", true)
+) { row ->
+    User(row.get("id"), row.get("name"))
+}
+```
+
+Use `queryOne` to get the first row or `null`:
+
+```kotlin
+val user = db.queryOne(
+    "SELECT id, name FROM users WHERE id = $1",
+    listOf(42)
+) { row ->
+    User(row.get("id"), row.get("name"))
+}
 ```
 
 Use `row.getOrNull<T>()` for nullable columns. Column names are **case-insensitive**.
 
-### Transactions
+> **Note:** `queryOne` uses a wire-level cursor (`Execute(maxRows = 1)`) — the server stops sending rows after the first one, so no extra rows are transferred even for unbounded queries.
+
+### Execute with RETURNING
+
+Use `executeReturning` for `INSERT`, `UPDATE`, or `DELETE` statements that include a `RETURNING` clause. Using `execute` with `RETURNING` will crash the connection.
 
 ```kotlin
-db.inTransaction { tx ->
-    val id = tx.query("INSERT INTO users (name) RETURNING id", "Alice") { row ->
-        row.get<Int>("id")
-    }.first()
+// Insert a row and get the generated id back
+val newId = db.executeReturning(
+    "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id",
+    listOf("Alice", "alice@example.com")
+) { row ->
+    row.get<Int>("id")
+}.first()
 
-    tx.execute("INSERT INTO audit (user_id, event) VALUES ($1, $2)", id, "created")
+// Update and get the updated rows back
+val updated = db.executeReturning(
+    "UPDATE users SET active = $1 WHERE role = $2 RETURNING id, name",
+    listOf(false, "guest")
+) { row ->
+    User(row.get("id"), row.get("name"))
+}
+```
+
+### Streaming (queryFlow)
+
+`queryFlow` returns a cold `Flow<T>` backed by a wire-level cursor. The server sends rows in chunks of `chunkSize` (default 50) using the PostgreSQL `Execute(maxRows = N)` / `PortalSuspended` mechanism. No results are buffered in memory beyond the current chunk.
+
+```kotlin
+import kotlinx.coroutines.flow.collect
+
+// Stream all rows from a large table
+db.queryFlow("SELECT id, payload FROM events ORDER BY id", chunkSize = 100) { row ->
+    Event(row.get("id"), row.get("payload"))
+}.collect { event ->
+    process(event)
+}
+
+// With parameters
+db.queryFlow(
+    "SELECT id, payload FROM events WHERE tenant_id = $1 ORDER BY id",
+    listOf(tenantId),
+    chunkSize = 200
+) { row ->
+    Event(row.get("id"), row.get("payload"))
+}.collect { event ->
+    process(event)
+}
+```
+
+> **Note:** `queryFlow` acquires a connection for the entire duration of the flow collection. The connection-acquire step is bounded by `acquireTimeout`, but execution is not — the flow can run as long as needed.
+
+### Transactions
+
+`inTransaction` takes an extension lambda on `CardioTransaction`. Inside the block, `this` is the transaction handle, so you can call `query`, `execute`, and `executeReturning` directly.
+
+```kotlin
+db.inTransaction {
+    val id = executeReturning(
+        "INSERT INTO users (name) VALUES ($1) RETURNING id",
+        listOf("Alice")
+    ) { row -> row.get<Int>("id") }.first()
+
+    execute(
+        "INSERT INTO audit (user_id, event) VALUES ($1, $2)",
+        listOf(id, "created")
+    )
+}
+```
+
+#### Implicit transaction propagation
+
+Any `db.query()`, `db.execute()`, or `db.executeReturning()` call made from within an `inTransaction` block automatically joins the active transaction — no need to pass a `tx` handle through your call stack.
+
+```kotlin
+suspend fun createUser(name: String): Int {
+    return db.executeReturning(
+        "INSERT INTO users (name) VALUES ($1) RETURNING id",
+        listOf(name)
+    ) { row -> row.get<Int>("id") }.first()
+}
+
+suspend fun createAuditLog(userId: Int, event: String) {
+    db.execute(
+        "INSERT INTO audit (user_id, event) VALUES ($1, $2)",
+        listOf(userId, event)
+    )
+}
+
+// Both helpers run inside the same transaction automatically
+db.inTransaction {
+    val id = createUser("Alice")   // uses the active tx
+    createAuditLog(id, "created")  // also uses the same tx
+}
+```
+
+#### Nested inTransaction
+
+Calling `inTransaction` from within an already-active transaction joins the existing transaction rather than opening a nested one. The outer transaction controls commit/rollback.
+
+```kotlin
+db.inTransaction {
+    execute("INSERT INTO users (name) VALUES ($1)", listOf("Alice"))
+
+    db.inTransaction {
+        // This joins the outer transaction — no nested BEGIN is sent
+        execute("INSERT INTO audit (event) VALUES ($1)", listOf("user_created"))
+    }
+    // Single commit here covers both inserts
+}
+```
+
+#### Explicit commit / rollback
+
+```kotlin
+db.inTransaction {
+    execute("INSERT INTO drafts (body) VALUES ($1)", listOf(content))
+    if (shouldPublish) {
+        commit()   // explicit commit
+    } else {
+        rollback() // explicit rollback
+    }
 }
 ```
 
 ### Repositories
 
 ```kotlin
-class UserRepository(db: Cardio) : CardioRepository(db) {
+class UserRepository(db: Cardio) : CardioRepository<Cardio>(db) {
 
     suspend fun findById(id: Int): User? =
-        queryOne("SELECT id, name FROM users WHERE id = $1", id) { row ->
+        queryOne("SELECT id, name FROM users WHERE id = $1", listOf(id)) { row ->
             User(id = row.get("id"), name = row.get("name"))
         }
 
-    suspend fun create(name: String): Long =
-        execute("INSERT INTO users (name) VALUES ($1)", name)
+    suspend fun create(name: String): Int = inTransaction {
+        executeReturning(
+            "INSERT INTO users (name) VALUES ($1) RETURNING id",
+            listOf(name)
+        ) { row -> row.get<Int>("id") }.first()
+    }
+
+    suspend fun findAll(): List<User> =
+        query("SELECT id, name FROM users ORDER BY id") { row ->
+            User(row.get("id"), row.get("name"))
+        }
 }
 ```
 
@@ -238,7 +392,20 @@ class UserRepository(db: Cardio) : CardioRepository(db) {
 @Serializable
 data class User(val id: Int, val name: String)
 
-val user = db.queryOne("SELECT id, name FROM users WHERE id = $1", 42) { row ->
+// Mapper-free single row
+val user: User? = db.queryOne<User>(
+    "SELECT id, name FROM users WHERE id = $1",
+    listOf(42)
+)
+
+// Mapper-free list
+val users: List<User> = db.query<User>("SELECT id, name FROM users WHERE active = $1", listOf(true))
+
+// Manual decode (when you need access to the Row object)
+val user = db.queryOne(
+    "SELECT id, name FROM users WHERE id = $1",
+    listOf(42)
+) { row ->
     CardioSerializationFormat.decodeFromRow<User>(row)
 }
 ```
@@ -247,35 +414,35 @@ val user = db.queryOne("SELECT id, name FROM users WHERE id = $1", 42) { row ->
 
 Cardio supports PostgreSQL array parameters natively, enabling SQL functions like `ANY($1)`, `unnest($1)`, `= ALL($1)`, etc.
 
-Pass a Kotlin `List<T>` or a primitive array and Cardio will encode it in the PostgreSQL binary array format automatically:
+Pass a Kotlin `List<T>` or a primitive array and Cardio will encode it in the PostgreSQL binary array format automatically. When the array is itself a query parameter, wrap it in the outer params list:
 
 ```kotlin
 // ANY($1) — filter by a set of ids
 val users = db.query(
     "SELECT id, name FROM users WHERE id = ANY($1)",
-    listOf(1, 2, 3)
+    listOf(listOf(1, 2, 3))
 ) { row -> User(row.get("id"), row.get("name")) }
 
 // unnest($1) — expand an array into rows
 val ids = db.query(
     "SELECT * FROM unnest($1) AS id",
-    listOf(10L, 20L, 30L)
+    listOf(listOf(10L, 20L, 30L))
 ) { row -> row.get<Long>("id") }
 
 // Kotlin primitive arrays work too
-db.execute("DELETE FROM sessions WHERE id = ANY($1)", intArrayOf(5, 6, 7))
+db.execute("DELETE FROM sessions WHERE id = ANY($1)", listOf(intArrayOf(5, 6, 7)))
 
 // Mixed queries — scalar and array params together
 db.query(
     "SELECT * FROM events WHERE tenant_id = $1 AND status = ANY($2)",
-    tenantId, listOf("active", "pending")
+    listOf(tenantId, listOf("active", "pending"))
 ) { row -> /* … */ }
 ```
 
 Array results (columns with an array type) are decoded back to `List<T>`:
 
 ```kotlin
-val row = db.queryOne("SELECT tags FROM posts WHERE id = $1", 42) { it }
+val row = db.queryOne("SELECT tags FROM posts WHERE id = $1", listOf(42)) { it }!!
 val tags: List<String> = row.get("tags")
 ```
 
@@ -301,7 +468,7 @@ For any other element type, supply an explicit `ArrayCodec`:
 ```kotlin
 db.query(
     "SELECT * FROM unnest($1) AS s",
-    Param(myEnumList, ArrayCodec(PgOid.TEXT_ARRAY, MyEnumCodec))
+    listOf(Param(myEnumList, ArrayCodec(PgOid.TEXT_ARRAY, MyEnumCodec)))
 ) { row -> /* … */ }
 ```
 
@@ -385,6 +552,46 @@ val stats = db.stats
 println("Active: ${stats.activeConnections} / ${stats.totalConnections}")
 println("Total acquired: ${stats.totalAcquired}, errors: ${stats.totalErrors}")
 ```
+
+### Exception hierarchy
+
+All Cardio exceptions extend `CardioException`, so you can catch the entire family with one handler or target a specific subtype:
+
+```kotlin
+import io.github.blad3mak3r.cardio.protocol.CardioException
+import io.github.blad3mak3r.cardio.protocol.PgException
+import io.github.blad3mak3r.cardio.protocol.connection.PgConnectException
+import io.github.blad3mak3r.cardio.protocol.connection.PgSslException
+import io.github.blad3mak3r.cardio.protocol.connection.PgPoolTimeoutException
+
+try {
+    db.query("SELECT * FROM non_existent_table") { it }
+} catch (e: PgException) {
+    // Server returned an error response (wrong SQL, constraint violation, …)
+    println("SQL error ${e.sqlState}: ${e.message}")
+} catch (e: PgPoolTimeoutException) {
+    // All pool connections were busy; caller waited longer than acquireTimeout
+    println("Pool exhausted: ${e.message}")
+} catch (e: PgSslException) {
+    // TLS negotiation failed (server declined SSL, cert invalid, hostname mismatch)
+    println("SSL error: ${e.message}")
+} catch (e: PgConnectException) {
+    // Could not reach the server (TCP connect failed, startup timeout, wrong credentials)
+    println("Connect error: ${e.message}")
+} catch (e: CardioException) {
+    // Any other Cardio error
+    println("Cardio error: ${e.message}")
+}
+```
+
+| Exception | Extends | When thrown |
+|---|---|---|
+| `CardioException` | `Exception` | Base class — never thrown directly |
+| `PgException` | `CardioException` | Server returned an `ErrorResponse` |
+| `PgConnectException` | `CardioException` | TCP connection or startup handshake failed |
+| `PgSslException` | `PgConnectException` | TLS negotiation failed |
+| `PgPoolTimeoutException` | `CardioException` | `acquireTimeout` expired waiting for a free connection |
+| `PgConnectionCreationException` | `CardioException` | Pool exhausted all reconnect attempts |
 
 ---
 
@@ -492,9 +699,7 @@ When `sslRootCert` is `null` the JVM's default trust store is used (applies to
 
 ### Error handling
 
-When SSL is required but the server does not support it, a
-`io.github.blad3mak3r.cardio.protocol.connection.PgSslException` is thrown (wrapped in a
-`PgConnectException`):
+SSL errors throw `PgSslException` (a subtype of `PgConnectException`):
 
 ```kotlin
 import io.github.blad3mak3r.cardio.protocol.connection.PgConnectException
@@ -505,11 +710,10 @@ try {
         host = "localhost"; database = "mydb"; username = "user"; password = "secret"
         ssl = Connection.SslMode.REQUIRE
     }
+} catch (e: PgSslException) {
+    println("TLS negotiation failed: ${e.message}")
 } catch (e: PgConnectException) {
-    val cause = generateSequence<Throwable>(e) { it.cause }.firstOrNull { it is PgSslException }
-    if (cause != null) {
-        println("Server does not support SSL: ${cause.message}")
-    }
+    println("Connection failed: ${e.message}")
 }
 ```
 
