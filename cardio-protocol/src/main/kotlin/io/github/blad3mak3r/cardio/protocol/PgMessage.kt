@@ -372,13 +372,14 @@ sealed interface PgMessage {
          * Converts this error response into a [PgException] that can be thrown
          * and caught by the application.
          */
-        fun toException(): PgException {
+        fun toException(sql: String? = null): PgException {
             return PgException(
                 severity = severity,
                 sqlState = sqlState,
                 message = message,
                 detail = detail,
-                hint = hint
+                hint = hint,
+                sql = sql,
             )
         }
     }

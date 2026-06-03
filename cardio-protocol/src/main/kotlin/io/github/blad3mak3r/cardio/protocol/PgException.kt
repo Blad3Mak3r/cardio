@@ -19,4 +19,9 @@ class PgException(
     override val message: String,
     val detail: String? = null,
     val hint: String? = null,
-) : CardioException("[$severity/$sqlState] $message${detail?.let { " — $it" } ?: ""}")
+    val sql: String? = null,
+) : CardioException(buildString {
+    append("[$severity/$sqlState] $message")
+    detail?.let { append(" — $it") }
+    sql?.let { append("\nSQL: $it") }
+})
