@@ -350,7 +350,7 @@ class Connection private constructor(
                     }
                     is PgMessage.ErrorResponse -> {
                         drainUntilReady()
-                        throw msg.toException()
+                        throw msg.toException(sql)
                     }
                     is PgMessage.NoticeResponse -> Unit
                     else -> error("Unexpected message during queryFlow: ${msg::class.simpleName}")
@@ -425,7 +425,7 @@ class Connection private constructor(
                 }
                 is PgMessage.ErrorResponse -> {
                     drainUntilReady()
-                    throw msg.toException()
+                    throw msg.toException(sql)
                 }
                 is PgMessage.NoticeResponse -> Unit
                 else -> error("Unexpected message during query: ${msg::class.simpleName}")
@@ -470,7 +470,7 @@ class Connection private constructor(
                 }
                 is PgMessage.ErrorResponse -> {
                     drainUntilReady()
-                    throw msg.toException()
+                    throw msg.toException(sql)
                 }
                 is PgMessage.NoticeResponse -> Unit
                 else -> error("Unexpected message during queryOne: ${msg::class.simpleName}")
@@ -501,7 +501,7 @@ class Connection private constructor(
                 }
                 is PgMessage.ErrorResponse        -> {
                     drainUntilReady()
-                    throw msg.toException()
+                    throw msg.toException(sql)
                 }
                 is PgMessage.NoticeResponse       -> Unit
                 else -> error("Unexpected message during execute: ${msg::class.simpleName}")
