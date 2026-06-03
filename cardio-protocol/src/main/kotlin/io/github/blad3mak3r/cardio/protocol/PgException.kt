@@ -22,6 +22,6 @@ class PgException(
     val sql: String? = null,
 ) : CardioException(buildString {
     append("[$severity/$sqlState] $message")
-    detail?.let { append(" — $it") }
-    sql?.let { append("\nSQL: $it") }
+    if (detail != null) append(" — $detail")
+    if (sql != null) append("\nSQL: $sql")
 })
