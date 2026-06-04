@@ -1,6 +1,7 @@
 package io.github.blad3mak3r.cardio.protocol.connection
 
 import io.github.blad3mak3r.cardio.protocol.DatabaseOperations
+import io.github.blad3mak3r.cardio.protocol.PgNotification
 import io.github.blad3mak3r.cardio.protocol.DescribeTarget
 import io.github.blad3mak3r.cardio.protocol.PgException
 import io.github.blad3mak3r.cardio.protocol.PgMessage
@@ -353,6 +354,7 @@ class Connection private constructor(
                         throw msg.toException(sql)
                     }
                     is PgMessage.NoticeResponse -> Unit
+                    is PgMessage.NotificationResponse -> Unit
                     else -> error("Unexpected message during queryFlow: ${msg::class.simpleName}")
                 }
             }
@@ -396,6 +398,37 @@ class Connection private constructor(
         runCatching { selectorManager.close() }
     }
 
+    /**
+     * Perpetual receive loop that dispatches [PgNotification] messages.
+     *
+     * This method suspends indefinitely and is designed for a *dedicated* listen-only
+     * connection (see `PgListener`).  It must be the only active reader on this connection
+     * and is NOT protected by the internal mutex.
+     *
+     * Silently discards protocol responses that arrive as side-effects of concurrent
+     * `LISTEN`/`UNLISTEN` commands (`ParseComplete`, `BindComplete`, `NoData`,
+     * `CommandComplete`, `ReadyForQuery`, `NoticeResponse`, `ParameterStatus`).
+     * Any other unexpected message type terminates the loop.
+     *
+     * The loop exits cleanly on coroutine cancellation.
+     */
+    suspend fun notificationLoop(onNotification: suspend (PgNotification) -> Unit) {
+        while (true) {
+            when (val msg = PgMessageReader.read(readChannel)) {
+                is PgMessage.NotificationResponse ->
+                    onNotification(PgNotification(msg.processId, msg.channel, msg.payload))
+                is PgMessage.NoticeResponse,
+                is PgMessage.ParameterStatus,
+                is PgMessage.ParseComplete,
+                is PgMessage.BindComplete,
+                is PgMessage.NoData,
+                is PgMessage.CommandComplete,
+                is PgMessage.ReadyForQuery -> Unit
+                else -> break
+            }
+        }
+    }
+
     private suspend fun <T> executeQuery(
         sql: String,
         params: List<Any?>,
@@ -428,6 +461,7 @@ class Connection private constructor(
                     throw msg.toException(sql)
                 }
                 is PgMessage.NoticeResponse -> Unit
+                is PgMessage.NotificationResponse -> Unit
                 else -> error("Unexpected message during query: ${msg::class.simpleName}")
             }
         }
@@ -473,6 +507,7 @@ class Connection private constructor(
                     throw msg.toException(sql)
                 }
                 is PgMessage.NoticeResponse -> Unit
+                is PgMessage.NotificationResponse -> Unit
                 else -> error("Unexpected message during queryOne: ${msg::class.simpleName}")
             }
         }
@@ -504,6 +539,7 @@ class Connection private constructor(
                     throw msg.toException(sql)
                 }
                 is PgMessage.NoticeResponse       -> Unit
+                is PgMessage.NotificationResponse -> Unit
                 else -> error("Unexpected message during execute: ${msg::class.simpleName}")
             }
         }
@@ -531,10 +567,9 @@ class Connection private constructor(
     private suspend fun drainUntilReady() {
         try {
             while (true) {
-                val msg = PgMessageReader.read(readChannel)
-                if (msg is PgMessage.ReadyForQuery) {
-                    updateTransactionState(msg.status)
-                    break
+                when (val msg = PgMessageReader.read(readChannel)) {
+                    is PgMessage.ReadyForQuery -> { updateTransactionState(msg.status); break }
+                    else -> Unit
                 }
             }
         } catch (e: Exception) {
