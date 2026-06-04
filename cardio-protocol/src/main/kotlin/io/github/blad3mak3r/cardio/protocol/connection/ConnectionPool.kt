@@ -50,7 +50,7 @@ import kotlin.time.Duration.Companion.seconds
  * @see Stats
  */
 class ConnectionPool(
-    private val configuration: Configuration,
+    val configuration: Configuration,
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 ) {
     companion object {

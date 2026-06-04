@@ -3,6 +3,7 @@ package io.github.blad3mak3r.cardio.core
 import io.github.blad3mak3r.cardio.protocol.PgNotification
 import io.github.blad3mak3r.cardio.protocol.codec.TypeCodecRegistry
 import io.github.blad3mak3r.cardio.protocol.connection.Connection
+import io.github.blad3mak3r.cardio.protocol.connection.ConnectionPool
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -149,6 +150,13 @@ class PgListener private constructor(
     }
 
     companion object {
+        /**
+         * Creates a [PgListener] that reuses the connection configuration of an existing
+         * [ConnectionPool].  Intended to be called from [Cardio.newListener].
+         */
+        internal fun fromPool(config: ConnectionPool.Configuration): PgListener =
+            PgListener(config.connect, config.registry)
+
         /**
          * Creates a [PgListener] using the same DSL as [Cardio.new].
          *

@@ -372,27 +372,32 @@ waiting for notifications and reconnects automatically (with exponential back-of
 
 #### Creating a listener
 
+The simplest way is to create the listener directly from your existing `Cardio` instance — no
+credential duplication required.
+
+```kotlin
+// Shorthand: create and subscribe in one call
+val listener = db.listen("orders", "shipments")
+
+// Full control: create first, subscribe later
+val listener = db.newListener()
+listener.listen("orders")
+listener.listen("shipments", "payments")   // add more channels at any time
+```
+
+Use `PgListener.connect { … }` only when the listener must connect to a different host
+(e.g. a read replica) or use different credentials:
+
 ```kotlin
 import io.github.blad3mak3r.cardio.core.PgListener
 
 val listener = PgListener.connect {
-    host     = "localhost"
+    host     = "replica.example.com"
     database = "mydb"
     username = "user"
     password = "secret"
 }
-```
-
-The factory accepts the same DSL as `Cardio.new`. The listener starts with no active subscriptions; call `listen` to begin receiving.
-
-#### Subscribing to channels
-
-```kotlin
-// One channel
 listener.listen("orders")
-
-// Several channels at once
-listener.listen("orders", "shipments", "payments")
 ```
 
 #### Collecting notifications

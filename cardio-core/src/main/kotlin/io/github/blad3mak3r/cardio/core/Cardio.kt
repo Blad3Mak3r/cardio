@@ -229,6 +229,33 @@ open class Cardio(
     ): Flow<T> = pool.queryFlow(sql = sql, params = params, chunkSize = chunkSize, mapper = mapper)
 
     /**
+     * Creates a [PgListener] that reuses this instance's connection configuration.
+     *
+     * The listener starts with no active channel subscriptions; call [PgListener.listen]
+     * to begin receiving notifications.  Use [listen] for the common create-and-subscribe
+     * shorthand.
+     *
+     * The listener opens its own dedicated connection outside the pool and manages its
+     * lifecycle independently of this [Cardio] instance.
+     */
+    fun newListener(): PgListener = PgListener.fromPool(pool.configuration)
+
+    /**
+     * Creates a [PgListener] that reuses this instance's connection configuration and
+     * immediately subscribes to [channels].
+     *
+     * ```kotlin
+     * val listener = db.listen("orders", "shipments")
+     * listener.notifications.collect { n -> handleNotification(n) }
+     * ```
+     *
+     * @param channels One or more PostgreSQL channel names to subscribe to.
+     * @return The ready-to-collect [PgListener].
+     */
+    suspend fun listen(vararg channels: String): PgListener =
+        newListener().also { it.listen(*channels) }
+
+    /**
      * Sends a notification on [channel] with an optional [payload] using `pg_notify`.
      *
      * If called within an active [inTransaction] block, the notification is sent on the
