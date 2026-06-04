@@ -229,6 +229,24 @@ open class Cardio(
     ): Flow<T> = pool.queryFlow(sql = sql, params = params, chunkSize = chunkSize, mapper = mapper)
 
     /**
+     * Sends a notification on [channel] with an optional [payload] using `pg_notify`.
+     *
+     * If called within an active [inTransaction] block, the notification is sent on the
+     * transaction's connection and will only be visible to other sessions after the
+     * transaction commits (PostgreSQL defers delivery until commit).
+     *
+     * @param channel Name of the channel to notify.
+     * @param payload Arbitrary string payload, up to 8 000 bytes. Defaults to empty.
+     */
+    suspend fun notify(channel: String, payload: String = "") {
+        val txCtx = currentCoroutineContext()[CardioTransaction.Context]
+        if (txCtx != null)
+            txCtx.transaction.query("SELECT pg_notify(\$1, \$2)", listOf(channel, payload)) { }
+        else
+            pool.query("SELECT pg_notify(\$1, \$2)", listOf(channel, payload)) { }
+    }
+
+    /**
      * Acquires a connection, begins a transaction, and runs [block] inside it.
      * Commits on success; rolls back automatically if [block] throws.
      *
