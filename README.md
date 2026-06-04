@@ -23,6 +23,7 @@ Cardio is a lightweight Kotlin library for non-blocking PostgreSQL access using 
   - [Execute with RETURNING](#execute-with-returning)
   - [Streaming (queryFlow)](#streaming-queryflow)
   - [Transactions](#transactions)
+  - [LISTEN / NOTIFY](#listen--notify)
   - [Repositories](#repositories)
   - [kotlinx.serialization](#kotlinxserialization)
   - [Arrays](#arrays)
@@ -52,6 +53,7 @@ Cardio is a lightweight Kotlin library for non-blocking PostgreSQL access using 
 - 📡 **Streaming results** — `queryFlow` uses wire-level cursors (`Execute(maxRows = N)` + `PortalSuspended`) to stream large result sets without materialising the whole result in memory.
 - 🪶 **Minimal footprint** — runtime dependencies are only `ktor-network` and `kotlinx-coroutines-core`.
 - 🔑 **Full TLS/SSL support** — five SSL modes (`DISABLE`, `PREFER`, `REQUIRE`, `VERIFY_CA`, `VERIFY_FULL`) with proper certificate chain and hostname verification (RFC 2818 / RFC 6125).
+- 📢 **Native LISTEN / NOTIFY** — `PgListener` opens a dedicated connection outside the pool, delivers notifications as a `SharedFlow<PgNotification>`, and reconnects automatically on failure. `db.notify()` sends notifications injection-safely via `pg_notify`.
 - 📝 **Raw SQL** — plain PostgreSQL with native positional parameters (`$1`, `$2`, …); no ORM magic, no DSL.
 - 🛡️ **Typed exception hierarchy** — all errors extend `CardioException`; catch the specific subtype you care about (`PgException`, `PgConnectException`, `PgSslException`, `PgPoolTimeoutException`).
 
@@ -361,6 +363,108 @@ db.inTransaction {
     }
 }
 ```
+
+### LISTEN / NOTIFY
+
+Cardio supports PostgreSQL's asynchronous `LISTEN`/`NOTIFY` mechanism natively.
+`PgListener` owns a **single dedicated connection outside the pool** — it stays open indefinitely
+waiting for notifications and reconnects automatically (with exponential back-off) on any failure.
+
+#### Creating a listener
+
+```kotlin
+import io.github.blad3mak3r.cardio.core.PgListener
+
+val listener = PgListener.connect {
+    host     = "localhost"
+    database = "mydb"
+    username = "user"
+    password = "secret"
+}
+```
+
+The factory accepts the same DSL as `Cardio.new`. The listener starts with no active subscriptions; call `listen` to begin receiving.
+
+#### Subscribing to channels
+
+```kotlin
+// One channel
+listener.listen("orders")
+
+// Several channels at once
+listener.listen("orders", "shipments", "payments")
+```
+
+#### Collecting notifications
+
+```kotlin
+import io.github.blad3mak3r.cardio.protocol.PgNotification
+import kotlinx.coroutines.flow.collect
+
+// All channels — SharedFlow, supports multiple concurrent collectors
+listener.notifications.collect { n: PgNotification ->
+    println("[${n.channel}] ${n.payload}  (pid=${n.processId})")
+}
+
+// Filtered to one channel
+listener.channel("orders").collect { n ->
+    handleOrder(n.payload)
+}
+```
+
+`notifications` is a `SharedFlow<PgNotification>` — it is hot and supports any number of concurrent collectors. Each collector receives every notification independently.
+
+#### Sending notifications
+
+```kotlin
+// From the main pool connection — injection-safe via pg_notify
+db.notify("orders", "new-order-42")
+
+// Payload is optional (defaults to empty string)
+db.notify("heartbeat")
+```
+
+`db.notify()` routes through the active transaction context when called inside `inTransaction`.
+PostgreSQL defers delivery until the transaction commits, so listeners will only see the
+notification after a successful commit.
+
+```kotlin
+db.inTransaction {
+    execute("INSERT INTO orders (payload) VALUES ($1)", listOf(orderJson))
+    db.notify("orders", orderId.toString())
+    // notification is delivered only after this block commits
+}
+```
+
+#### Unsubscribing
+
+```kotlin
+listener.unlisten("orders")
+```
+
+When the channel set changes, `PgListener` reconnects and re-subscribes to the remaining active channels automatically.
+
+#### Cleanup
+
+```kotlin
+listener.close()
+```
+
+Cancels the receive loop and closes the dedicated connection. The corresponding `UNLISTEN *` is handled by the server when the TCP connection closes.
+
+#### `PgNotification` fields
+
+| Field | Type | Description |
+|---|---|---|
+| `channel` | `String` | The channel name on which the notification was sent |
+| `payload` | `String` | Arbitrary string payload (empty string if none was provided) |
+| `processId` | `Int` | Server PID of the session that called `NOTIFY` |
+
+> **Note:** `PgListener` uses its own connection that is never returned to the pool.
+> It does not count against `maxSize` and does not block other queries.
+> Automatic reconnection uses exponential back-off starting at 500 ms, capped at 30 s.
+
+---
 
 ### Repositories
 
