@@ -828,6 +828,13 @@ try {
 
 ---
 
+## cardio-pgmq
+
+Message queue support via the [PGMQ](https://pgmq.github.io/pgmq/latest/) extension.
+See [cardio-pgmq/README.md](cardio-pgmq/README.md) for documentation.
+
+---
+
 ## Building
 
 ```bash
