@@ -115,16 +115,16 @@ object PgMessageReader {
     }
 
     /**
-     * Reads bytes until \0, returns String without the terminator
-      */
+     * Reads bytes until \0, returns the UTF-8 decoded string without the terminator.
+     */
     private fun Buffer.readCString(): String {
-        val sb = StringBuilder()
+        val bytes = Buffer()
         while (!exhausted()) {
             val b = readByte()
             if (b == 0.toByte()) break
-            sb.append(b.toInt().toChar())
+            bytes.writeByte(b)
         }
-        return sb.toString()
+        return bytes.readByteArray().toString(Charsets.UTF_8)
     }
 
 
