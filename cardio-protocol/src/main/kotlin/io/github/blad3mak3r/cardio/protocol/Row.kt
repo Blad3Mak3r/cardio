@@ -24,11 +24,6 @@ class Row @PublishedApi internal constructor(
     @PublishedApi internal val data: PgMessage.DataRow,
     @PublishedApi internal val registry: TypeCodecRegistry
 ) {
-    @PublishedApi
-    internal val indexByName: Map<String, Int> = description.fields.mapIndexed { i, f ->
-        f.name.lowercase() to i
-    }.toMap()
-
     /**
      * Returns the value of the column named [name], decoded with [codec].
      *
@@ -101,8 +96,8 @@ class Row @PublishedApi internal constructor(
 
     @PublishedApi
     internal fun index(name: String): Int =
-        indexByName[name.lowercase()]
-            ?: error("Column '$name' not found. Available: ${indexByName.keys.joinToString()}")
+        description.indexByName[name.lowercase()]
+            ?: error("Column '$name' not found. Available: ${description.indexByName.keys.joinToString()}")
 
     @PublishedApi
     internal fun columnBytes(name: String): ByteArray? = data.columns[index(name)]
