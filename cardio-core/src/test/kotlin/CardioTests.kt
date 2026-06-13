@@ -100,6 +100,16 @@ class CardioTests {
         }
     }
 
+    @Test
+    fun unicodeColumnNameTest() = runBlocking {
+        val result = client!!.query("SELECT 1 AS \"ñoño_emoji_🎉\"") { row ->
+            row.columnNames.first() to row.get<Int>("ñoño_emoji_🎉")
+        }.first()
+
+        assert(result.first == "ñoño_emoji_🎉") { "Expected UTF-8 column name to round-trip, but got '${result.first}'" }
+        assert(result.second == 1) { "Expected value to be 1, but got ${result.second}" }
+    }
+
     @AfterAll
     fun tearDown() {
         runBlocking {
