@@ -25,6 +25,20 @@ object PgMessageWriter {
         Buffer().also { it.writeMessage(message) }.readByteArray()
 
     /**
+     * Encodes a sequence of [PgMessage.Frontend] messages into a single [ByteArray],
+     * writing each one in order into the same [Buffer].
+     *
+     * Used to batch an entire extended-query round trip (Parse/Bind/Describe/Execute/Sync)
+     * into one `writeFully` call instead of concatenating several separately-encoded
+     * [ByteArray]s.
+     *
+     * @param messages The frontend messages to encode, in wire order.
+     * @return A single [ByteArray] containing all messages back-to-back.
+     */
+    fun encode(messages: List<PgMessage.Frontend>): ByteArray =
+        Buffer().also { buf -> messages.forEach { buf.writeMessage(it) } }.readByteArray()
+
+    /**
      * Encodes and writes a [PgMessage.Frontend] directly to the given [channel],
      * flushing it afterwards.
      *
