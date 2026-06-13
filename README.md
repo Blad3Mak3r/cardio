@@ -2,10 +2,6 @@
 
 Cardio is a lightweight Kotlin library for non-blocking PostgreSQL access using pure coroutines. Unlike solutions that wrap Vert.x or Reactor, Cardio implements the **PostgreSQL wire protocol directly** over Ktor network sockets — no heavy runtimes, no reactive streams, just idiomatic Kotlin.
 
-> ⚠️ **`cardio-postgres` is deprecated and will be removed in a future release.**
-> It was the original Vert.x PG Client-backed implementation and is the currently published Maven artifact.
-> All new development happens in `cardio-core` + `cardio-protocol`. Migrate as soon as possible.
-
 ---
 
 ## 📑 Table of Contents

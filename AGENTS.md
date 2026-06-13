@@ -1,21 +1,19 @@
 # Cardio – AI Agent Guide
 
 ## Project Overview
-Cardio is a Kotlin library for non-blocking PostgreSQL access using coroutines. It contains **two parallel implementations** and an optional serialization add-on.
+Cardio is a Kotlin library for non-blocking PostgreSQL access using coroutines, plus an optional serialization add-on.
 
 ## Module Map
 
 ```
-cardio-protocol      – Custom PostgreSQL wire protocol over Ktor sockets (no Vert.x)
+cardio-protocol      – Custom PostgreSQL wire protocol over Ktor sockets
 cardio-core          – User-facing API on top of cardio-protocol (Cardio, CardioRepository, CardioTransaction)
 cardio-serialization – Optional kotlinx.serialization bridge (depends on cardio-core)
-cardio-postgres      – Legacy/alternative implementation backed by Vert.x PG Client 5.x
 ```
 
-**Dependency graph:** `cardio-serialization` → `cardio-core` → `cardio-protocol`  
-`cardio-postgres` is standalone (depends on `cardio-protocol` only for shared types).
+**Dependency graph:** `cardio-serialization` → `cardio-core` → `cardio-protocol`
 
-> ⚠️ `cardio-postgres` is **deprecated** and will be removed in a future release. All new development happens in `cardio-core` + `cardio-protocol`. `cardio-core`, `cardio-protocol`, and `cardio-serialization` are published to Maven Central; `cardio-postgres` is no longer published.
+`cardio-core`, `cardio-protocol`, and `cardio-serialization` are published to Maven Central.
 
 ## Build & Test
 
@@ -28,7 +26,7 @@ cardio-postgres      – Legacy/alternative implementation backed by Vert.x PG C
 - **Version** is derived from the latest git tag (`git describe --tags`), fallback to short hash or `"dev"`.
 - **JVM 21** is required (toolchain set in all modules).
 - Gradle configuration cache is enabled (`gradle.properties`).
-- Publishing is via `com.vanniktech.maven.publish` in `cardio-core`, `cardio-protocol`, and `cardio-serialization`; `cardio-postgres` has no publish configuration.
+- Publishing is via `com.vanniktech.maven.publish` in `cardio-core`, `cardio-protocol`, and `cardio-serialization`.
 
 ## Key Patterns
 
@@ -52,10 +50,7 @@ db.execute("DELETE FROM sessions WHERE id = ANY($1)", listOf(intArrayOf(5, 6, 7)
 ```
 
 ### Row Access
-| Module | Non-null | Nullable |
-|---|---|---|
-| `cardio-core` | `row.get<Int>("id")` | `row.getOrNull<Int>("id")` |
-| `cardio-postgres` | `row.getAs<Int>("id")` | `row.getAsNullable<Int>("id")` |
+`cardio-core`: `row.get<Int>("id")` (non-null), `row.getOrNull<Int>("id")` (nullable).
 
 Column lookup is **case-insensitive** in `cardio-core` (`Row.indexByName` lowercases keys). Index-based access is also supported: `row.get<Int>(0)` / `row.getOrNull<Int>(0)`.
 
@@ -65,13 +60,9 @@ Column lookup is **case-insensitive** in `cardio-core` (`Row.indexByName` lowerc
 
 ### Factory Methods
 ```kotlin
-// cardio-core (suspending — call from a coroutine or runBlocking):
+// suspending — call from a coroutine or runBlocking:
 val db = Cardio.new { host = "localhost"; database = "mydb"; username = "u"; password = "p" }
 val db = Cardio.newCustom<MyDb> { ... }   // reflection-based subclass
-
-// cardio-postgres (suspending):
-val db = Cardio.create<MyDb> { connectOptions = PgConnectOptions().apply { ... } }
-val db = Cardio.create<MyDb> { url("postgres://u:p@localhost:5432/mydb") }
 ```
 
 Other notable `Cardio.Configuration` fields: `maxSize` (default 10), `minSize` (default 2), `acquireTimeout` (default 30s), `idleTimeout` (default 600s), `applicationName`, `ssl` (`Connection.SslMode.DISABLE` | `PREFER` | `REQUIRE` | `VERIFY_CA` | `VERIFY_FULL`), `sslRootCert: ByteArray?` (PEM-encoded CA certificate for `VERIFY_CA`/`VERIFY_FULL`).
@@ -126,7 +117,7 @@ db.queryFlow("SELECT * FROM large_table", chunkSize = 500) { row ->
 The connection is held for the entire duration of collection. The flow is cold and can be collected only once per invocation.
 
 ### Repository Pattern
-Extend `CardioRepository` (either module) to encapsulate data access. The repository delegates directly to `db.query` / `db.execute` and exposes `inTransaction`:
+Extend `CardioRepository` to encapsulate data access. The repository delegates directly to `db.query` / `db.execute` and exposes `inTransaction`:
 ```kotlin
 class UserRepository(db: Cardio) : CardioRepository<Cardio>(db) {
     suspend fun findById(id: Int) = queryOne("SELECT * FROM users WHERE id = $1", listOf(id)) { row ->
@@ -240,5 +231,4 @@ postgres://user:pass@host/db?sslmode=verify-full&sslrootcertpath=/etc/ssl/ca.pem
 - `cardio-core/…/CardioTransaction.kt` — transaction handle + `Context` for CoroutineContext propagation
 - `cardio-core/…/UrlParser.kt` — URL parser (`sslmode`, `sslrootcert`, `sslrootcertpath` params)
 - `cardio-core/…/SslTests.kt` — 31 SSL/TLS tests
-- `cardio-postgres/…/ConnectionUrl.kt` — URL parser for `url("postgres://…")`
 - `gradle/libs.versions.toml` — all version pins (includes `kotlinx-coroutines-test` for tests)
