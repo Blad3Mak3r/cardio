@@ -280,7 +280,16 @@ sealed interface PgMessage {
      */
     data class RowDescription(
         val fields: List<FieldDescription>
-    ) : Backend
+    ) : Backend {
+        /**
+         * Maps lowercased column names to their zero-based index, for case-insensitive
+         * column lookup. Computed once per result set and shared by every [DataRow] /
+         * [io.github.blad3mak3r.cardio.protocol.Row] built from this description.
+         */
+        val indexByName: Map<String, Int> by lazy {
+            fields.mapIndexed { i, f -> f.name.lowercase() to i }.toMap()
+        }
+    }
 
     /**
      * Carries the binary or text data for one row of a query result.
