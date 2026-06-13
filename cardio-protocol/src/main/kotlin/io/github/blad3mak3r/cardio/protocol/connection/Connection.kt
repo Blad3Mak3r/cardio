@@ -1,6 +1,7 @@
 package io.github.blad3mak3r.cardio.protocol.connection
 
 import io.github.blad3mak3r.cardio.protocol.DatabaseOperations
+import io.github.blad3mak3r.cardio.protocol.EncodedParam
 import io.github.blad3mak3r.cardio.protocol.PgNotification
 import io.github.blad3mak3r.cardio.protocol.DescribeTarget
 import io.github.blad3mak3r.cardio.protocol.PgException
@@ -549,15 +550,21 @@ class Connection private constructor(
 
     // Parse + Bind + Describe(Portal) + Execute(maxRows) + Sync in a single flush
     private suspend fun sendExtendedQuery(sql: String, params: List<Any?>, maxRows: Int = 0) {
-        val resolved  = params.map { it.toParam() }
-        val encoded   = resolved.map { it.encode() }
-        val paramOids = resolved.map { it.oid }
+        val paramOids = ArrayList<Int>(params.size)
+        val encoded   = ArrayList<EncodedParam>(params.size)
+        for (param in params) {
+            val resolved = param.toParam()
+            paramOids += resolved.oid
+            encoded += resolved.encode()
+        }
 
-        val bytes = PgMessageWriter.encode(PgMessage.Parse(sql = sql, paramTypeOids = paramOids)) +
-                PgMessageWriter.encode(PgMessage.Bind(params = encoded, resultFormat = ResultFormat.BINARY)) +
-                PgMessageWriter.encode(PgMessage.Describe(target = DescribeTarget.PORTAL)) +
-                PgMessageWriter.encode(PgMessage.Execute(maxRows = maxRows)) +
-                PgMessageWriter.encode(PgMessage.Sync)
+        val bytes = PgMessageWriter.encode(listOf(
+            PgMessage.Parse(sql = sql, paramTypeOids = paramOids),
+            PgMessage.Bind(params = encoded, resultFormat = ResultFormat.BINARY),
+            PgMessage.Describe(target = DescribeTarget.PORTAL),
+            PgMessage.Execute(maxRows = maxRows),
+            PgMessage.Sync
+        ))
 
         writeChannel.writeFully(bytes)
         writeChannel.flush()
