@@ -374,11 +374,11 @@ object NumericCodec : TypeCodec<java.math.BigDecimal> {
         
         val ndigits = inp.readShort().toInt()
         val weight = inp.readShort().toInt()
-        val sign = inp.readShort().toInt()
-        val dscale = inp.readShort().toInt()
-        
-        if (ndigits == 0) return java.math.BigDecimal.ZERO
+        val sign = inp.readShort().toInt() and 0xFFFF
+        val dscale = inp.readShort().toInt() and 0xFFFF
+
         if (sign == 0xC000) return null // NaN not supported in BigDecimal
+        if (ndigits == 0) return java.math.BigDecimal.ZERO
         
         val digits = ShortArray(ndigits) { inp.readShort() }
         

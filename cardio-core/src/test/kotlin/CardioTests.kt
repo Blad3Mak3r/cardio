@@ -1,5 +1,7 @@
 import io.github.blad3mak3r.cardio.core.Cardio
 import io.github.blad3mak3r.cardio.core.url
+import io.github.blad3mak3r.cardio.protocol.codec.NumericCodec
+import io.github.blad3mak3r.cardio.protocol.codec.Param
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -98,6 +100,25 @@ class CardioTests {
         for (i in boolArray.indices) {
             assert(result[i] == boolArray[i]) { "Expected value at index $i to be ${boolArray[i]}, but got ${result[i]}" }
         }
+    }
+
+    @Test
+    fun numericTest() = runBlocking {
+        val value = java.math.BigDecimal("12345.6789")
+        val result = client!!.query("SELECT $1::numeric", listOf(Param(value, NumericCodec))) { row ->
+            row.get<java.math.BigDecimal>(0)
+        }.first()
+
+        assert(result.compareTo(value) == 0) { "Expected $value, but got $result" }
+    }
+
+    @Test
+    fun numericNaNTest() = runBlocking {
+        val result = client!!.query("SELECT 'NaN'::numeric") { row ->
+            row.getOrNull<java.math.BigDecimal>(0)
+        }.first()
+
+        assert(result == null) { "Expected null for NaN, but got $result" }
     }
 
     @Test
