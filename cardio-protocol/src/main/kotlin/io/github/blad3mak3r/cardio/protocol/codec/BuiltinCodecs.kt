@@ -914,7 +914,7 @@ object DateRangeCodec : TypeCodec<PgRange<kotlinx.datetime.LocalDate>> {
 
 
 /**
- * Generic [TypeCodec] for PostgreSQL one-dimensional array types, mapping to `List<T>`.
+ * Generic [TypeCodec] for PostgreSQL one-dimensional array types, mapping to `List<T?>`.
  *
  * The PostgreSQL binary array wire format encodes:
  * - 4 bytes: number of dimensions (`1` for all arrays produced by this codec)
@@ -924,7 +924,7 @@ object DateRangeCodec : TypeCodec<PgRange<kotlinx.datetime.LocalDate>> {
  * - 4 bytes: dimension lower bound (always `1`)
  * - For each element: 4 bytes length (`-1` for SQL NULL) followed by the element bytes
  *
- * SQL NULL elements in the decoded array are silently dropped (filtered out).
+ * SQL NULL elements are preserved as `null` at their original position in the decoded list.
  *
  * For the common scalar types, pre-built instances like [Int4ArrayCodec], [TextArrayCodec],
  * etc. are provided — there is no need to instantiate [ArrayCodec] directly for those types.
@@ -937,9 +937,9 @@ class ArrayCodec<T : Any>(
     override val oid: Int,
     /** Codec used to encode and decode individual elements of the array. */
     val elementCodec: TypeCodec<T>
-) : TypeCodec<List<T>> {
+) : TypeCodec<List<T?>> {
 
-    override fun encode(value: List<T>): ByteArray {
+    override fun encode(value: List<T?>): ByteArray {
         val buf = java.io.ByteArrayOutputStream()
         val out = java.io.DataOutputStream(buf)
 
@@ -950,15 +950,19 @@ class ArrayCodec<T : Any>(
         out.writeInt(1)                  // lower bound
 
         for (element in value) {
-            val bytes = elementCodec.encode(element)
-            out.writeInt(bytes.size)
-            out.write(bytes)
+            if (element == null) {
+                out.writeInt(-1)
+            } else {
+                val bytes = elementCodec.encode(element)
+                out.writeInt(bytes.size)
+                out.write(bytes)
+            }
         }
 
         return buf.toByteArray()
     }
 
-    override fun decode(bytes: ByteArray?): List<T>? {
+    override fun decode(bytes: ByteArray?): List<T?>? {
         if (bytes == null) return null
         val inp = java.io.DataInputStream(java.io.ByteArrayInputStream(bytes))
 
@@ -983,7 +987,7 @@ class ArrayCodec<T : Any>(
                 inp.readFully(elemBytes)
                 elementCodec.decode(elemBytes)
             }
-        }.filterNotNull()
+        }
     }
 }
 

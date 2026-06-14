@@ -101,6 +101,15 @@ class CardioTests {
     }
 
     @Test
+    fun intArrayWithNullElementsTest() = runBlocking {
+        val result = client!!.query("SELECT '{1,NULL,3}'::int[] AS arr") { row ->
+            row.get<List<Int?>>("arr")
+        }.first()
+
+        assert(result == listOf(1, null, 3)) { "Expected [1, null, 3], but got $result" }
+    }
+
+    @Test
     fun unicodeColumnNameTest() = runBlocking {
         val result = client!!.query("SELECT 1 AS \"ñoño_emoji_🎉\"") { row ->
             row.columnNames.first() to row.get<Int>("ñoño_emoji_🎉")
