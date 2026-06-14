@@ -157,11 +157,16 @@ object LocalDateCodec : TypeCodec<kotlinx.datetime.LocalDate> {
  */
 object JsonbCodec : TypeCodec<String> {
     override val oid = PgOid.JSONB
-    override fun encode(value: String): ByteArray =
-        byteArrayOf(1) + value.toByteArray(Charsets.UTF_8)
+    override fun encode(value: String): ByteArray {
+        val json = value.toByteArray(Charsets.UTF_8)
+        val out = ByteArray(json.size + 1)
+        out[0] = 1
+        json.copyInto(out, destinationOffset = 1)
+        return out
+    }
     override fun decode(bytes: ByteArray?): String? {
         if (bytes == null) return null
-        return bytes.toString(Charsets.UTF_8).drop(1)
+        return String(bytes, 1, bytes.size - 1, Charsets.UTF_8)
     }
 }
 

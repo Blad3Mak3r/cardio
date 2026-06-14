@@ -1,5 +1,7 @@
 import io.github.blad3mak3r.cardio.core.Cardio
 import io.github.blad3mak3r.cardio.core.url
+import io.github.blad3mak3r.cardio.protocol.codec.JsonbCodec
+import io.github.blad3mak3r.cardio.protocol.codec.Param
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -98,6 +100,20 @@ class CardioTests {
         for (i in boolArray.indices) {
             assert(result[i] == boolArray[i]) { "Expected value at index $i to be ${boolArray[i]}, but got ${result[i]}" }
         }
+    }
+
+    @Test
+    fun jsonbRoundTripTest() = runBlocking {
+        val json = "{\"name\":\"caf\\u00e9\",\"emoji\":\"🎉\",\"n\":42}"
+        val result = client!!.query("SELECT $1::jsonb", listOf(Param(json, JsonbCodec))) { row ->
+            row.get<String>(0)
+        }.first()
+
+        val expected = client!!.query("SELECT $1::jsonb::text", listOf(Param(json, JsonbCodec))) { row ->
+            row.get<String>(0)
+        }.first()
+
+        assert(result == expected) { "Expected '$expected', but got '$result'" }
     }
 
     @Test
