@@ -306,6 +306,22 @@ open class Cardio(
     suspend fun useConnection(block: suspend (CardioTransaction) -> Unit) =
         pool.use { conn -> block(CardioTransaction(conn)) }
 
+    /**
+     * Returns the [Connection.Configuration] used by every connection in the pool.
+     *
+     * Intended for modules that need to open a dedicated connection outside the pool
+     * (e.g. `cardio-pgmq`'s `PgmqConsumer`), mirroring what [PgListener] does internally.
+     */
+    fun connectionConfig(): Connection.Configuration = pool.configuration.connect
+
+    /**
+     * Returns the [TypeCodecRegistry] shared by all connections in the pool.
+     *
+     * Intended for modules that open a dedicated connection via [Connection.connect] and
+     * need to use the same codec configuration as the pool.
+     */
+    fun codecRegistry(): TypeCodecRegistry = pool.configuration.registry
+
     companion object {
         /**
          * Creates a [Cardio] instance, warms up the connection pool, and probes the database.

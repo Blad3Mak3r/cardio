@@ -14,4 +14,5 @@ rootProject.name = "cardio"
 include("cardio-protocol")
 include("cardio-core")
 include("cardio-serialization")
+include("cardio-pgmq")
 include("docs")
